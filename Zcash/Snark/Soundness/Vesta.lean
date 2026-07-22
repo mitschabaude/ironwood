@@ -171,25 +171,6 @@ theorem commit_adjustedWitness {G : Type*} [AddCommGroup G] [Module Fp G] (urs :
     intro a a'; simp only [commit, Pi.sub_apply, sub_smul, Finset.sum_sub_distrib]
   rw [adjustedWitness, commit_add, csub, commit_single, commit_smul]
 
-/-- Every Vesta point propositionally lies in the span of a nonzero `urs.g 0`.
-Computational reductions must receive, rather than choose, this representation. -/
-theorem commit_surjective (urs : URS VestaG) (hg0 : urs.g 0 ≠ 0)
-    (P : VestaG) : ∃ aMulti : Fin (2 ^ urs.k) → Fp, commit urs aMulti = P := by
-  have hinj : Function.Injective (fun c : Fp => c • urs.g 0) := by
-    intro c c' h
-    have h' : c • urs.g 0 = c' • urs.g 0 := h
-    rcases eq_or_ne c c' with hcc | hcc
-    · exact hcc
-    · refine absurd ?_ hg0
-      have hd : c - c' ≠ 0 := sub_ne_zero.mpr hcc
-      have h0 : (c - c') • urs.g 0 = 0 := by rw [sub_smul, h', sub_self]
-      rw [← one_smul Fp (urs.g 0), ← inv_mul_cancel₀ hd, mul_smul, h0, smul_zero]
-  haveI : Fintype VestaG := Fintype.ofFinite VestaG
-  have hcardeq : Fintype.card Fp = Fintype.card VestaG := by
-    rw [card_Fp, ← Nat.card_eq_fintype_card, Vesta.card_eq]
-  obtain ⟨c, hc⟩ := ((Fintype.bijective_iff_injective_and_card _).mpr ⟨hinj, hcardeq⟩).surjective P
-  exact ⟨Pi.single 0 c, by rw [commit_single]; exact hc⟩
-
 open scoped ENNReal in
 /-- A nonzero blinding shift vanishes for at most a `1 / |Fp|` fraction of uniform `ξ` challenges. -/
 theorem blinder_value_recovery_badSet {k : ℕ} (s : Fin (2 ^ k) → Fp) (xEval : Fp)
