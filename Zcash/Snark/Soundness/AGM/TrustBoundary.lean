@@ -309,6 +309,8 @@ assert_no_sorry orchard_verifier_vesta_member_constraint_budgeted
 assert_no_sorry member_relation_or_dlr_of_instance_budgeted
 assert_no_sorry member_snark_of_instance_budgeted
 assert_no_sorry orchard_verifier_sound_vesta_budgeted
+assert_no_sorry cleanOpening_provenance
+assert_no_sorry snarkExtraction_prob_le_of_generatorRO_textbookDL_budgeted
 
 /-- info: 'Zcash.Snark.orchard_verifier_vesta_member_constraint_budgeted' depends on axioms:
 [propext, Classical.choice, Quot.sound,

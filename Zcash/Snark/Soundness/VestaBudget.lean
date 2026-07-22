@@ -759,4 +759,99 @@ noncomputable def orchard_verifier_sound_vesta_budgeted
     (fun a hmem => hencodes a hmem.batchOpenings hmem.memberDecode
       (snarkRelation_of_memberColumns hmem))
 
+/-! ## The clean-opening extraction hand-off
+
+`hasCleanOpening` (`Forking.Adversary.Algebraic`) packages an instance the computed family
+produced together with its clean-opening branch. `instanceAttempt_provenance`
+(`Soundness.Compose67`) exposes the `AlgebraicWfProof` behind that instance, and the budgeted
+witness tie above turns the opening into the member SNARK relation given the multiopen rewind
+data. The two theorems below chain these: the extraction *logic* of the conditional
+knowledge-error bound's `hExtract` hypothesis is discharged, leaving a data-supply obligation
+that receives the concrete proof, oracle scalars, and opening.
+
+What remains for a fully unconditional bound is the *coupling*: the supply's inputs — the batch
+`pbatch` and the accept floors `hprob1`/`hJ` — are outputs of the multiopen challenge draw, which
+the family's coin space does not range over. `deployed_member_budget`
+(`Soundness.Multiopen.BudgetedExtraction`) prices exactly that draw's failure event at
+`t₁ + (t₂ + t₃ + t₄)`; joining it to the family bound needs a product space over
+(oracle coins × the four fresh challenges) and a measure statement relating the two draws — a
+genuine probabilistic modeling step, not a composition of what exists. -/
+
+/-- A clean opening's provenance: the produced instance is a `deployedAlgebraicInstanceOfCert` of
+a concrete `AlgebraicWfProof`, oracle scalars, and certificate, and its run took the clean-opening
+branch. `hasCleanOpening` unpacked through `instanceAttempt_provenance`. -/
+theorem cleanOpening_provenance (family : ComputedAlgebraicFSFamily shape)
+    (coins : family.Coins) (h : family.hasCleanOpening basis coins) :
+    ∃ (p : AlgebraicWfProof basis (family.vk basis)) (ν : Fin 11 → Fp)
+      (cert : AlgebraicDForkCert (F := Fp)
+        (augmentedBasis (ursOfAugmentedBasis shape.k basis).g
+          (ursOfAugmentedBasis shape.k basis).u (ursOfAugmentedBasis shape.k basis).w) shape.k)
+      (hz : ν 10 ≠ 0)
+      (hvalid : DeployedForkValid (ursOfAugmentedBasis shape.k basis).g
+        (evalVector shape.k (ν 7)) (ursOfAugmentedBasis shape.k basis).u
+        (ursOfAugmentedBasis shape.k basis).w (ν 10)
+        (commit (ursOfAugmentedBasis shape.k basis)
+            (adjustedWitness (p.aMulti ν) p.s
+              (multiopenValue (family.vk basis) p.proof.1 (chRecord ν (fun _ => 0))) (ν 9)) +
+          (p.multiU ν + ν 9 * p.sU) • (ursOfAugmentedBasis shape.k basis).u +
+          (p.multiBlind ν + ν 9 * p.sBlind) • (ursOfAugmentedBasis shape.k basis).w)
+        cert.toDForkCert),
+      (family.instanceAttempt basis coins).output
+          = some (deployedAlgebraicInstanceOfCert p ν cert hz hvalid) ∧
+      ∃ o : (deployedAlgebraicInstanceOfCert p ν cert hz hvalid).Opening,
+        (deployedAlgebraicInstanceOfCert p ν cert hz hvalid).run = PSum.inl o := by
+  obtain ⟨x, hout, o, hrun⟩ := h
+  obtain ⟨p, ν, cert, hz, hvalid, hx⟩ := instanceAttempt_provenance family coins hout
+  subst hx
+  exact ⟨p, ν, cert, hz, hvalid, hout, o, hrun⟩
+
+open scoped ENNReal in
+open ComputedAlgebraicFSFamily in
+/-- **The knowledge-error bound with the extraction logic discharged.**
+`snarkExtraction_prob_le_of_generatorRO_textbookDL` (`Soundness.Compose67`) with its `hExtract`
+hypothesis reduced through the clean-opening provenance: the supply obligation `hSupply` receives
+the concrete `AlgebraicWfProof`, oracle scalars, certificate, and clean opening behind each
+produced instance — exactly the inputs of the budgeted witness tie
+(`member_relation_or_dlr_of_instance_budgeted`), which concludes the extraction given the
+multiopen rewind data at that instance's base. The bound is the clean-opening bound
+`(Q+k)·3/|Fp| + (Q+1)/|Fp| + |basis|·ε`, verbatim. The residual for a fully unconditional bound
+is the coin–challenge coupling recorded in this section's note. -/
+theorem snarkExtraction_prob_le_of_generatorRO_textbookDL_budgeted {shape : Shape}
+    {T : Type*} [DecidableEq T] (B : VestaG) (hB : B ≠ 0)
+    (query : AugmentedIndex (2 ^ shape.k) → T) (hquery : Function.Injective query)
+    (family : ComputedAlgebraicFSFamily shape) {bound : ℝ≥0∞}
+    (hDL : TextbookDLWithCoinsAdvantageLE B family.snarkRelationFinder bound)
+    (extracted : (AugmentedIndex (2 ^ shape.k) → VestaG) → family.Coins → Prop)
+    (hSupply : ∀ (bs : AugmentedIndex (2 ^ shape.k) → VestaG) (coins : family.Coins)
+      (p : AlgebraicWfProof bs (family.vk bs)) (ν : Fin 11 → Fp)
+      (cert : AlgebraicDForkCert (F := Fp)
+        (augmentedBasis (ursOfAugmentedBasis shape.k bs).g
+          (ursOfAugmentedBasis shape.k bs).u (ursOfAugmentedBasis shape.k bs).w) shape.k)
+      (hz : ν 10 ≠ 0)
+      (hvalid : DeployedForkValid (ursOfAugmentedBasis shape.k bs).g
+        (evalVector shape.k (ν 7)) (ursOfAugmentedBasis shape.k bs).u
+        (ursOfAugmentedBasis shape.k bs).w (ν 10)
+        (commit (ursOfAugmentedBasis shape.k bs)
+            (adjustedWitness (p.aMulti ν) p.s
+              (multiopenValue (family.vk bs) p.proof.1 (chRecord ν (fun _ => 0))) (ν 9)) +
+          (p.multiU ν + ν 9 * p.sU) • (ursOfAugmentedBasis shape.k bs).u +
+          (p.multiBlind ν + ν 9 * p.sBlind) • (ursOfAugmentedBasis shape.k bs).w)
+        cert.toDForkCert),
+      (family.instanceAttempt bs coins).output
+          = some (deployedAlgebraicInstanceOfCert p ν cert hz hvalid) →
+      ∀ o : (deployedAlgebraicInstanceOfCert p ν cert hz hvalid).Opening,
+        (deployedAlgebraicInstanceOfCert p ν cert hz hvalid).run = PSum.inl o →
+        extracted bs coins) :
+    (independentProductPMF (orchardGeneratorROSetup query)
+      (PMF.uniformOfFintype family.Coins)).toOuterMeasure
+        ((fun p => (orchardGeneratorROBasis query p.1, p.2)) ⁻¹'
+          family.snarkExtractionFailureEvent extracted)
+      ≤ (family.Q + shape.k) * (3 / Fintype.card Fp) +
+        (family.Q + 1 : ℕ) * (1 / Fintype.card Fp) +
+        Fintype.card (AugmentedIndex (2 ^ shape.k)) * bound :=
+  snarkExtraction_prob_le_of_generatorRO_textbookDL B hB query hquery family hDL extracted
+    (fun bs coins h => by
+      obtain ⟨p, ν, cert, hz, hvalid, hout, o, hrun⟩ := cleanOpening_provenance family coins h
+      exact hSupply bs coins p ν cert hz hvalid hout o hrun)
+
 end Zcash.Snark

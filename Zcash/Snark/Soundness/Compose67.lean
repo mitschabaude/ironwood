@@ -602,12 +602,15 @@ The `#56` clean-opening failure `snarkFailureEvent` is already bounded
 clean-opening failure and inherits the same bound — **conditional on the gate data discharging on
 clean openings** (`hExtract`).
 
-This condition is not removable here: it is the disjoint-halves gap (#67 scope). The deployed gate
-data is produced by the #18 deployed forking floors (`openedMemberDecode_of_x1Prob`/`openedX4Rewind`),
-a *separate* probabilistic account, and **no failure-probability bound exists over the deployed accept
-measures** (`OpenedX1/X2/X3/X4Accept`) — they occur only as measure-lower-bound premises. Removing
-`hExtract` requires bounding the multiopen-decode failure and unioning it with the AGM bound:
-substantive new content, the genuine remaining core of #67's quantitative clause. -/
+The extraction *logic* behind `hExtract` is discharged downstream: the budgeted witness tie
+(`Soundness.VestaBudget.member_relation_or_dlr_of_instance_budgeted`) concludes the extraction from
+a clean opening given the multiopen rewind data, and
+`Soundness.VestaBudget.snarkExtraction_prob_le_of_generatorRO_textbookDL_budgeted` restates this
+bound with `hExtract` reduced to that data-supply obligation through the instance provenance. The
+multiopen failure itself is priced (`Soundness.Multiopen.FloorBudget`,
+`Soundness.Multiopen.BudgetedExtraction.deployed_member_budget`). What keeps the bound conditional
+is the coin–challenge coupling: the supply's inputs live over the multiopen challenge draw, which
+the family's coin space does not range over — see the hand-off note in `Soundness.VestaBudget`. -/
 
 namespace ComputedAlgebraicFSFamily
 
