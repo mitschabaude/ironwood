@@ -129,4 +129,46 @@ theorem nested_squeeze_floor_failure_le {B : Type*} [Fintype B] [Nonempty B]
         ¬ (t < (PMF.uniformOfFintype Fp).toOuterMeasure (Finset.univ.filter (acc b)))})
     (fun b => squeeze_floor_failure_le (acc b) t)
 
+/-- **Nested single-squeeze floor-failure bound, base-first orientation.** The mirror of
+`nested_squeeze_floor_failure_le` for when the outer base is the *first* product coordinate and the
+fresh inner slot is the *second* — the shape a squeeze takes when the challenges sampled before it
+are packaged on the left. Same composition, via `uniformOfFintype_prod_fiber_bound_right`. -/
+theorem nested_squeeze_floor_failure_le_right {A : Type*} [Fintype A] [Nonempty A]
+    (acc : A → Fp → Prop) (t : ℝ≥0∞) :
+    (PMF.uniformOfFintype (A × Fp)).toOuterMeasure
+        {x : A × Fp | acc x.1 x.2 ∧
+          ¬ (t < (PMF.uniformOfFintype Fp).toOuterMeasure
+                  (Finset.univ.filter (acc x.1)))}
+      ≤ t :=
+  uniformOfFintype_prod_fiber_bound_right
+    (fun a => {χ : Fp | acc a χ ∧
+        ¬ (t < (PMF.uniformOfFintype Fp).toOuterMeasure (Finset.univ.filter (acc a)))})
+    (fun a => squeeze_floor_failure_le (acc a) t)
+
+/-- **Two-squeeze combined floor-failure budget (the union composes).** Over the joint draw of an
+outer challenge (`x.1`) and an inner challenge (`x.2`), the probability that *either* the outer
+floor fails (outer accepts but its accept-measure `≤ t₁`) *or* the inner floor fails at the base the
+outer challenge determines (inner accepts but its accept-measure `≤ t₂`) is `≤ t₁ + t₂` — the sum of
+the two thresholds.
+
+This is the smallest faithful instance of the combined multiopen budget: it shows the per-squeeze
+floor-failure bounds (`nested_squeeze_floor_failure_le` for the outer, `_right` for the inner-at-
+outer-base) union additively on a *shared* sampling space with no cross term — exactly the
+`measure_union_le`-then-`add_le_add` step the full x₁/x₂/x₃/x₄ budget iterates. The four-squeeze
+budget is this same union over the nested challenge product; the only additional work is the
+product-association reindexing that routes each squeeze's fresh slot to the coordinate its fiber
+bound consumes (no further soundness content — the nested Fubini already composes cleanly here). -/
+theorem combined_two_floor_failure_le (acc₁ : Fp → Prop) (acc₂ : Fp → Fp → Prop)
+    (t₁ t₂ : ℝ≥0∞) :
+    (PMF.uniformOfFintype (Fp × Fp)).toOuterMeasure
+        ({x : Fp × Fp | acc₁ x.1 ∧
+            ¬ (t₁ < (PMF.uniformOfFintype Fp).toOuterMeasure (Finset.univ.filter acc₁))}
+          ∪ {x : Fp × Fp | acc₂ x.1 x.2 ∧
+            ¬ (t₂ < (PMF.uniformOfFintype Fp).toOuterMeasure
+                    (Finset.univ.filter (acc₂ x.1)))})
+      ≤ t₁ + t₂ := by
+  refine le_trans (MeasureTheory.measure_union_le _ _) (add_le_add ?_ ?_)
+  · exact nested_squeeze_floor_failure_le (fun _ : Fp => acc₁) t₁
+  · exact nested_squeeze_floor_failure_le_right acc₂ t₂
+
 end Zcash.Snark
