@@ -59,4 +59,74 @@ theorem openedX4_floor_failure_le [DecidableEq G] [Inhabited G] {shape : Shape}
       ≤ (deployedX4PairCount vk ps ch : ℝ≥0∞) / Fintype.card Fp :=
   squeeze_floor_failure_le (OpenedX4Accept urs hk vk ps ch b) _
 
+/-- **The x₃-squeeze floor-failure bound.** `squeeze_floor_failure_le` at `OpenedX3Accept` and an
+arbitrary threshold `t` (the terminal instantiates `t := (max (2 ^ k) |allPts| + |allPts|)/|Fp|`,
+the `hprob3` floor threshold): over the fresh x₃ challenge the deployed run accepting while the x₃
+rewind accept-measure sits at or below `t` has probability `≤ t`. Same template as
+`openedX4_floor_failure_le`. -/
+theorem openedX3_floor_failure_le [DecidableEq G] [Inhabited G] {shape : Shape}
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp) (b : Fin (2 ^ urs.k) → Fp)
+    (t : ℝ≥0∞) :
+    (PMF.uniformOfFintype Fp).toOuterMeasure
+        {χ : Fp | OpenedX3Accept urs hk vk ps ch b χ ∧
+          ¬ (t < (PMF.uniformOfFintype Fp).toOuterMeasure
+                  (Finset.univ.filter (OpenedX3Accept urs hk vk ps ch b)))}
+      ≤ t :=
+  squeeze_floor_failure_le (OpenedX3Accept urs hk vk ps ch b) t
+
+/-- **The x₂-squeeze floor-failure bound.** `squeeze_floor_failure_le` at `OpenedX2Accept` and an
+arbitrary threshold `t` (the terminal instantiates `t := (deployedX4PairCount - 1)/|Fp|`, the `hx2`
+floor threshold). Same template as `openedX4_floor_failure_le`. -/
+theorem openedX2_floor_failure_le [DecidableEq G] [Inhabited G] {shape : Shape}
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp) (b : Fin (2 ^ urs.k) → Fp)
+    (t : ℝ≥0∞) :
+    (PMF.uniformOfFintype Fp).toOuterMeasure
+        {χ : Fp | OpenedX2Accept urs hk vk ps ch b χ ∧
+          ¬ (t < (PMF.uniformOfFintype Fp).toOuterMeasure
+                  (Finset.univ.filter (OpenedX2Accept urs hk vk ps ch b)))}
+      ≤ t :=
+  squeeze_floor_failure_le (OpenedX2Accept urs hk vk ps ch b) t
+
+/-- **The x₁-squeeze floor-failure bound.** `squeeze_floor_failure_le` at `OpenedX1Accept` (which
+carries no blinder argument) and an arbitrary threshold `t` (the terminal instantiates
+`t := ((deployedSetQueries vk ps ch i).length - 1)/|Fp|`, the per-set `hprob1` floor threshold).
+Same template as `openedX4_floor_failure_le`. -/
+theorem openedX1_floor_failure_le [DecidableEq G] [Inhabited G] {shape : Shape}
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp) (t : ℝ≥0∞) :
+    (PMF.uniformOfFintype Fp).toOuterMeasure
+        {χ : Fp | OpenedX1Accept urs hk vk ps ch χ ∧
+          ¬ (t < (PMF.uniformOfFintype Fp).toOuterMeasure
+                  (Finset.univ.filter (OpenedX1Accept urs hk vk ps ch)))}
+      ≤ t :=
+  squeeze_floor_failure_le (OpenedX1Accept urs hk vk ps ch) t
+
+/-- **Nested single-squeeze floor-failure bound (the Fubini composition primitive).** For a family
+of single-slot accept predicates `acc b : Fp → Prop` indexed by an outer `Fintype` base `b : B`,
+the failure event "the inner run accepts at its fresh slot `x.1` while the inner accept-measure at
+that base sits `≤ t`" has probability `≤ t` over the *joint* draw of the inner slot and the outer
+base.
+
+This is the crux of whether option-(b) composes: at each fixed outer base `b`, the inner
+accept-measure `measure(filter (acc b))` is a constant in the inner slot `x.1`, so
+`squeeze_floor_failure_le (acc b) t` bounds the fiber by `t`; `uniformOfFintype_prod_fiber_bound`
+then lifts the uniform per-fiber bound to the product. The inner threshold condition never depends
+on the inner slot, so no `x.1`-dependence leaks across the lift — the nested `Fubini` is clean. The
+deployed squeezes instantiate `acc := OpenedX{2,3,4}Accept` at the base produced by the outer
+sampled challenges (via the `reprogramX*` run-determination), with `B` the outer challenge product
+`Fp`, `Fp × Fp`, `Fp × Fp × Fp`. -/
+theorem nested_squeeze_floor_failure_le {B : Type*} [Fintype B] [Nonempty B]
+    (acc : B → Fp → Prop) (t : ℝ≥0∞) :
+    (PMF.uniformOfFintype (Fp × B)).toOuterMeasure
+        {x : Fp × B | acc x.2 x.1 ∧
+          ¬ (t < (PMF.uniformOfFintype Fp).toOuterMeasure
+                  (Finset.univ.filter (acc x.2)))}
+      ≤ t :=
+  uniformOfFintype_prod_fiber_bound
+    (fun b => {χ : Fp | acc b χ ∧
+        ¬ (t < (PMF.uniformOfFintype Fp).toOuterMeasure (Finset.univ.filter (acc b)))})
+    (fun b => squeeze_floor_failure_le (acc b) t)
+
 end Zcash.Snark
