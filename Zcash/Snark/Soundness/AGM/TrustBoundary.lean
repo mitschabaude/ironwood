@@ -3,6 +3,7 @@ import Zcash.Snark.Soundness.AGM.Capstone
 import Zcash.Snark.Soundness.AGM.ProbabilityVesta
 import Zcash.Snark.Soundness.Forking.Adversary
 import Zcash.Snark.Soundness.Compose67
+import Zcash.Snark.Soundness.Multiopen.BudgetedExtraction
 import Mathlib.Util.AssertNoSorry
 
 /-!
@@ -267,23 +268,64 @@ assert_no_sorry deployed_value_check_node_binding
 assert_no_sorry deployed_member_node_binding
 assert_no_sorry orchard_verifier_vesta_member_constraint_derived
 
--- Issue #67 (compose forking extraction with the decoded capstones; retire
--- `ExtractableFromAcceptance`): the algebraic clean opening identified with the deployed
--- capstone's shape (`ipaRelation_deployed_of_instance`), the witness-tie composition
--- (`member_snark_of_instance`), and the computed-path soundness endpoint
--- (`orchard_verifier_sound_vesta_computed`) that concludes the plain `SnarkRelation` with NO
--- `ExtractableFromAcceptance` hypothesis. G4 (`snarkExtraction_prob_le_of_generatorRO_textbookDL`)
--- is the CONDITIONAL knowledge-error bound: the SNARK-extraction failure is contained in the #56
--- clean-opening failure and inherits its `(Q+k)·3/|Fp| + (Q+1)/|Fp| + |basis|·ε` bound, conditional
--- on `hExtract` (clean opening ⟹ extraction). Removing `hExtract` = the deployed-floor ↔ AGM-family
--- reconciliation (no failure-probability bound exists over the deployed accept measures), still open.
+-- The forking-extraction ∘ decoded-capstone composition (`Soundness.Compose67`): the algebraic
+-- clean opening identified with the deployed capstone's shape (`ipaRelation_deployed_of_instance`),
+-- the witness-tie composition (`member_snark_of_instance`), and the computed-path soundness
+-- endpoint (`orchard_verifier_sound_vesta_computed`) that concludes the plain `SnarkRelation` with
+-- NO `ExtractableFromAcceptance` hypothesis. On the witness tie the opened-value shift is derived
+-- (`shift_eq_zero_of_openings_agree`), so `hshift` survives only on the standalone single-opening
+-- bridge. `snarkExtraction_prob_le_of_generatorRO_textbookDL` is the CONDITIONAL knowledge-error
+-- bound: the SNARK-extraction failure is contained in the clean-opening failure and inherits its
+-- `(Q+k)·3/|Fp| + (Q+1)/|Fp| + |basis|·ε` bound, conditional on `hExtract` (clean opening ⟹
+-- extraction). Discharging `hExtract` — coupling the AGM family's coin measure to the multiopen
+-- budget below — is the remaining reconciliation.
 assert_no_sorry ipaRelation_deployed_of_instance
 assert_no_sorry member_snark_of_instance
 assert_no_sorry snarkRelation_of_memberColumns
 assert_no_sorry orchard_verifier_sound_vesta_computed
 assert_no_sorry snarkExtraction_prob_le_of_generatorRO_textbookDL
 assert_no_sorry instanceAttempt_provenance
-assert_no_sorry snarkExtraction_prob_le_of_generatorRO_textbookDL
+assert_no_sorry ipaRelation_deployed_of_openings_agree
+assert_no_sorry shift_eq_zero_of_openings_agree
+
+-- The budgeted multiopen extraction (`Soundness.Multiopen.FloorBudget`,
+-- `Soundness.Multiopen.BudgetedExtraction`): the heavy-fiber Markov descent
+-- (`uniformOfFintype_heavy_fiber_lt`) replaces the `∀`-over-runs squeeze floors of the value-check
+-- and member cores with a single joint accept floor at honest-base thresholds, the runs pinned by
+-- the canonical selectors; `deployed_member_budget` is the combined soundness budget — the joint
+-- accept measure sits within the four-threshold budget, or every decoded member column takes its
+-- claimed evaluation (or a computed relation exists).
+assert_no_sorry uniformOfFintype_heavy_fiber_lt
+assert_no_sorry deployed_value_check_node_binding_budgeted
+assert_no_sorry deployed_member_node_binding_budgeted
+assert_no_sorry deployed_member_budget
+
+/-- info: 'Zcash.Snark.uniformOfFintype_heavy_fiber_lt' depends on axioms: [propext,
+Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms uniformOfFintype_heavy_fiber_lt
+
+/-- info: 'Zcash.Snark.deployed_member_node_binding_budgeted' depends on axioms: [propext,
+Classical.choice, Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms deployed_member_node_binding_budgeted
+
+/-- info: 'Zcash.Snark.deployed_member_budget' depends on axioms: [propext, Classical.choice,
+Quot.sound] -/
+#guard_msgs (whitespace := lax) in
+#print axioms deployed_member_budget
+
+/-- info: 'Zcash.Snark.ipaRelation_deployed_of_openings_agree' depends on axioms: [propext,
+Classical.choice, Quot.sound,
+CompElliptic.Curves.Pasta.Vesta.p_nsmul_Gpt._native.native_decide.ax_1_1] -/
+#guard_msgs (whitespace := lax) in
+#print axioms ipaRelation_deployed_of_openings_agree
+
+/-- info: 'Zcash.Snark.shift_eq_zero_of_openings_agree' depends on axioms: [propext,
+Classical.choice, Quot.sound,
+CompElliptic.Curves.Pasta.Vesta.p_nsmul_Gpt._native.native_decide.ax_1_1] -/
+#guard_msgs (whitespace := lax) in
+#print axioms shift_eq_zero_of_openings_agree
 
 /-- info: 'Zcash.Snark.relation_prob_le_of_textbookDL' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

@@ -699,23 +699,4 @@ theorem instanceAttempt_provenance
     · exact ⟨_, _, _, _, _, (Option.some.inj h).symm⟩
     · exact absurd h (by simp)
 
-open scoped ENNReal in
-open Classical in
-/-- **The x₁ single-slot floor failure bound (#67 G7 stage 2).** `uniformOfFintype_accept_below_threshold_le`
-instantiated at the deployed `x₁` accept event: the measure of the `x₁` compression challenges where the
-deployed run accepts yet the `x₁` accept measure sits at or below `t` is `≤ t`. This bounds the failure of
-the derived terminal's `hprob1`/`hprob1p` floors, which are single-slot over the fixed honest `(ps, ch)`.
-The `hx2`/`hprob3`/`hprob4` floors are ∀-quantified over the run structures `X1/X2/X3Run`, which carry NO
-`Fintype` instance, so their failure event is an existential over a non-finite adversarial type — not a
-uniform-measure event this bound (or any single-slot count) can reach. -/
-theorem openedX1_floor_failure_le (urs : URS VestaG) (hk : shape.k = urs.k)
-    (vk : VerifyingKey shape Fp VestaG) (ps : ProofString shape Fp VestaG)
-    (ch : Challenges shape.k Fp) (t : ℝ≥0∞) :
-    (PMF.uniformOfFintype Fp).toOuterMeasure
-        {χv : Fp | OpenedX1Accept urs hk vk ps ch χv ∧
-          (PMF.uniformOfFintype Fp).toOuterMeasure
-              (Finset.univ.filter (OpenedX1Accept urs hk vk ps ch)) ≤ t}
-      ≤ t :=
-  uniformOfFintype_accept_below_threshold_le (OpenedX1Accept urs hk vk ps ch) t
-
 end Zcash.Snark
