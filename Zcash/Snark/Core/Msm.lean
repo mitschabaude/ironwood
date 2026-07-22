@@ -82,6 +82,30 @@ def eval {F G : Type*} [Field F] [AddCommGroup G] [Module F G]
     + m.wScalar • urs.w + m.uScalar • urs.u
     + (m.other.map fun t => t.1 • t.2).sum
 
+/-- Compute an MSM over `ZMod p` using each scalar's canonical natural representative and the
+group's executable `nsmul`. This is the concrete operation performed by a curve library's scalar
+multiplication and does not require installing a `Module (ZMod p) G` instance or assuming the group
+order. It is intended for concrete fixture computation; the generic soundness development uses
+`eval` above. -/
+def evalNat {p : ℕ} {G : Type*} [AddCommGroup G]
+    (urs : URS G) (m : Msm urs.k (ZMod p) G) : G :=
+  (Finset.univ.sum fun i => (m.gScalars i).val • urs.g i)
+    + m.wScalar.val • urs.w + m.uScalar.val • urs.u
+    + (m.other.map fun t => t.1.val • t.2).sum
+
+/-- The concrete `evalNat` agrees with the generic `eval` whenever `G` carries a `ZMod p`-module
+structure: the canonical-representative action `c.val • x` (`nsmul`) coincides with the module action
+`c • x` (`Nat.cast_smul_eq_nsmul`, since `(c.val : ZMod p) = c`). This is the formal bridge from the
+concrete fixtures — which use `evalNat` to avoid assuming a module instance or the group order — to
+the abstract soundness development, which is stated in terms of `eval`. -/
+theorem evalNat_eq_eval {p : ℕ} [Fact p.Prime] {G : Type*} [AddCommGroup G] [Module (ZMod p) G]
+    (urs : URS G) (m : Msm urs.k (ZMod p) G) :
+    m.evalNat urs = m.eval urs := by
+  haveI : NeZero p := ⟨(Fact.out : p.Prime).pos.ne'⟩
+  have key : ∀ (c : ZMod p) (x : G), c.val • x = c • x := fun c x => by
+    rw [← Nat.cast_smul_eq_nsmul (ZMod p) c.val x, ZMod.natCast_rightInverse c]
+  simp only [evalNat, eval, key]
+
 /-- Appending a `(c, P)` term adds `c • P` to the evaluation. -/
 theorem eval_appendTerm {F G : Type*} [Field F] [AddCommGroup G] [Module F G]
     (urs : URS G) (c : F) (P : G) (m : Msm urs.k F G) :

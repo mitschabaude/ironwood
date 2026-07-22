@@ -1413,7 +1413,6 @@ def ReductionEfficient (family : ComputedAlgebraicFSFamily shape) (R : ℕ) : Pr
 theorem reductionEfficient_exists (family : ComputedAlgebraicFSFamily shape) :
     ∃ R, family.ReductionEfficient R := by
   classical
-  letI : Fintype VestaG := Fintype.ofFinite VestaG
   refine ⟨Finset.univ.sup fun basis => ∑ coins : family.Coins,
       (family.instanceAttempt basis coins).runs, fun basis => ?_⟩
   calc ∑ coins : family.Coins, (family.instanceAttempt basis coins).runs
@@ -1815,10 +1814,9 @@ namespace ComputedAlgebraicFSFamilyUnbounded
 variable {shape : Shape}
 
 /-- One finite support containing the reachable support of every basis-indexed adversary. -/
-noncomputable def globalReachSet (family : ComputedAlgebraicFSFamilyUnbounded shape) :
+def globalReachSet (family : ComputedAlgebraicFSFamilyUnbounded shape) :
     Finset (List (TranscriptElt Fp VestaG)) := by
   classical
-  letI : Fintype VestaG := Fintype.ofFinite VestaG
   exact Finset.univ.biUnion fun basis : AugmentedIndex (2 ^ shape.k) → VestaG =>
     (family.adversary basis).reachSet
 
@@ -1826,17 +1824,15 @@ open Classical in
 theorem reachSet_subset_globalReachSet (family : ComputedAlgebraicFSFamilyUnbounded shape)
     (basis : AugmentedIndex (2 ^ shape.k) → VestaG) :
     (family.adversary basis).reachSet ⊆ family.globalReachSet := by
-  letI : Fintype VestaG := Fintype.ofFinite VestaG
   intro t ht
   exact Finset.mem_biUnion.mpr ⟨basis, Finset.mem_univ _, ht⟩
 
 /-- Split arbitrary transcripts into the deployed bounded component and a common finite junk
 component, then fix the junk table as private randomness. -/
-noncomputable def splitFamilyRand (family : ComputedAlgebraicFSFamilyUnbounded shape) :
+def splitFamilyRand (family : ComputedAlgebraicFSFamilyUnbounded shape) :
     ComputedAlgebraicFSFamilyRand shape
       ({t // t ∈ family.globalReachSet} → Fp) := by
   classical
-  letI : Fintype VestaG := Fintype.ofFinite VestaG
   let L := preIpaLen shape family.init.length 10 + 3 * shape.k
   exact
     { init := family.init
@@ -2036,11 +2032,10 @@ def determinize (family : ComputedAlgebraicFSFamilyUnboundedRand shape R) (r : R
     queryBound := fun basis => family.queryBound basis r }
 
 /-- One finite support covering the reachable support of every basis *and every private coin*. -/
-noncomputable def globalReachSet [Fintype R]
+def globalReachSet [Fintype R]
     (family : ComputedAlgebraicFSFamilyUnboundedRand shape R) :
     Finset (List (TranscriptElt Fp VestaG)) := by
   classical
-  letI : Fintype VestaG := Fintype.ofFinite VestaG
   exact Finset.univ.biUnion fun basis : AugmentedIndex (2 ^ shape.k) → VestaG =>
     Finset.univ.biUnion fun r : R => (family.adversary basis r).reachSet
 
@@ -2049,19 +2044,17 @@ theorem reachSet_subset_globalReachSet [Fintype R]
     (family : ComputedAlgebraicFSFamilyUnboundedRand shape R)
     (basis : AugmentedIndex (2 ^ shape.k) → VestaG) (r : R) :
     (family.adversary basis r).reachSet ⊆ family.globalReachSet := by
-  letI : Fintype VestaG := Fintype.ofFinite VestaG
   intro t ht
   exact Finset.mem_biUnion.mpr ⟨basis, Finset.mem_univ _,
     Finset.mem_biUnion.mpr ⟨r, Finset.mem_univ _, ht⟩⟩
 
 /-- Split against the shared support, pairing the genuine private coin with the junk table: a
 bounded randomized family at coin type `R × junk`. -/
-noncomputable def splitFamilyRand [Fintype R]
+def splitFamilyRand [Fintype R]
     (family : ComputedAlgebraicFSFamilyUnboundedRand shape R) :
     ComputedAlgebraicFSFamilyRand shape
       (R × ({t // t ∈ family.globalReachSet} → Fp)) := by
   classical
-  letI : Fintype VestaG := Fintype.ofFinite VestaG
   let L := preIpaLen shape family.init.length 10 + 3 * shape.k
   exact
     { init := family.init

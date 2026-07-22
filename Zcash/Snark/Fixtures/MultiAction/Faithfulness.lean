@@ -3,10 +3,12 @@ import Zcash.Snark.Fixtures.MultiAction.Fixture
 /-!
 # Shape and VK faithfulness checks for the multi-action capture
 
-The generated fixture remains the Rust/Lean boundary: Lean does not re-run Orchard key generation or
-prove that the dumped values are the true deployed verifying key. These checks instead make the
-generated boundary less silent by verifying that the named captured lists, typed accessors, query
-layouts, expression indices, and captured transcript prefix agree with the generated `shape`.
+The generated fixture remains the Rust/Lean boundary: Lean does not re-run Orchard key generation.
+The Orchard capture now re-runs key generation, compares that exact key against the checked-in
+canonical Post-NU6.3 `PinnedVerificationKey`, and passes the same key to verification and the fixture
+dumper; `Fixtures.PostNu63` pins the emitted transcript representation in Lean. These checks make the
+remaining generated boundary less silent by verifying that the named captured lists, typed accessors,
+query layouts, expression indices, and captured transcript prefix agree with the generated `shape`.
 
 In particular this catches the totalization hazards called out in `Verifier.Assemble`: an
 out-of-range query index would otherwise route through `finFn`/`finFnG` and alias `0`/`default`.

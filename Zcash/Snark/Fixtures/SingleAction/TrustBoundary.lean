@@ -2,16 +2,13 @@ import Zcash.Snark.Fixtures.SingleAction.Fixture
 import Mathlib.Util.AssertNoSorry
 
 /-!
-# Checked trust boundary of the fingerprint match
+# Checked trust boundary of the concrete fingerprint fixture
 
 This module is built by CI (it belongs to the `FixtureCheck` lake target) and turns the trust boundary of
-the captured fingerprint match into *checked*, build-time obligations. It complements — it does not
-duplicate — the computability guarantee that the match already carries: `fingerprint_matches` is proved by
-`native_decide`, which compiles and *runs* the Lean verifier `assemble` on the captured proof, so building
-`FixtureCheck` already fails if anything on the assembled-MSM path is `noncomputable` (Lean's own
-per-definition, whole-path determination). What a build does *not* otherwise pin down is whether the
-theorem rests on a `sorry` reached through some dependency, or on an unexpected axiom. Those are
-what this module rules out.
+the concrete captured fingerprint into *checked*, build-time obligations. Besides the
+coefficient-and-point match, the generated fixture validates every Vesta coordinate, binds the captured
+transcript prefix to the canonical VK representation emitted by Rust, and computes both the captured and
+Lean-assembled MSMs to the Vesta identity.
 
 Both checks below follow Lean's elaborated dependency graph (via `Lean.collectAxioms`), so they see holes
 anywhere in the transitive closure — including the `Soundness/` proof layer and Mathlib — which a
@@ -32,6 +29,11 @@ open Zcash.Snark Zcash.Snark.Fixture
 
 -- No `sorry` reaches the captured match or the verifier assembly it runs (whole dependency graph).
 assert_no_sorry fingerprint_matches
+assert_no_sorry capturedPointCoordinatesValid_eq_true
+assert_no_sorry capturedInit_startsWith_vkTranscriptRepr
+assert_no_sorry capturedMsm_eval_eq_zero
+assert_no_sorry assembledMsm_eval_eq_zero
+assert_no_sorry Msm.evalNat
 assert_no_sorry assemble
 
 -- `whitespace := lax` collapses all whitespace, so the pin is insensitive to how
@@ -39,3 +41,7 @@ assert_no_sorry assemble
 /-- info: 'Zcash.Snark.Fixture.fingerprint_matches' depends on axioms: [propext, Classical.choice, Quot.sound, fingerprint_matches._native.native_decide.ax_1_1] -/
 #guard_msgs (whitespace := lax) in
 #print axioms fingerprint_matches
+
+/-- info: 'Zcash.Snark.Fixture.capturedMsm_eval_eq_zero' depends on axioms: [propext, Classical.choice, Quot.sound, capturedMsm_eval_eq_zero._native.native_decide.ax_1_1] -/
+#guard_msgs (whitespace := lax) in
+#print axioms capturedMsm_eval_eq_zero

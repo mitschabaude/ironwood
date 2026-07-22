@@ -1,6 +1,7 @@
 import Mathlib
 import Zcash.Snark.Soundness.Main
 import Zcash.Snark.Soundness.Forking.Rewind
+import Zcash.Snark.Soundness.Forking.KnowledgeError
 import CompElliptic.Curves.Pasta
 import CompElliptic.Curves.PastaOrder
 
@@ -58,6 +59,17 @@ is in scope; this file installs that fact via `vestaOrder`. Computable (curve ad
 `ZMod`-action both are), so the break reductions stay plain `def`s at the concrete curve. -/
 instance vestaFpModule [h : Fact VestaOrder] : Module Fp VestaG :=
   AddCommGroup.zmodModule h.out
+
+/-- **The concrete-to-abstract MSM bridge at Vesta.** `Msm.evalNat_eq_eval` specialised to
+`SWPoint Vesta.curve`: the pinned Vesta group order supplies the `Fp`-module structure
+unconditionally (via `vestaFpModule`, as for the capstones below), so the executable natural-scalar
+evaluation the concrete fixtures compute (`capturedMsm.evalNat`, `(assemble ..).evalNat`) coincides
+with the module-theoretic `eval` the soundness capstones consume. So the fixtures' `evalNat = 0`
+checks *are* the `eval = 0` acceptance condition of the abstract verifier, not merely an analogous
+computation. -/
+theorem Msm.evalNat_eq_eval_vesta (urs : URS VestaG)
+    (m : Msm urs.k Fp VestaG) : m.evalNat urs = m.eval urs :=
+  Msm.evalNat_eq_eval urs m
 
 /-- **Conditional soundness at Vesta.** `orchard_verifier_sound_conditional` specialised to
 `SWPoint Vesta.curve`; the Vesta group order (hence the `Fp`-module structure) is supplied by the
@@ -176,7 +188,7 @@ noncomputable def legacy_orchard_verifier_vesta_forking_opening [DecidableEq Ves
         (deployedCommitment urs hk vk ps ch - pU • urs.u - pW • urs.w
           - multiopenValue vk ps ch • urs.g 0 + ξ • commit urs s
           + (z * 0) • urs.u + blind • urs.w) χ)
-    (hprob : (kerr (Fintype.card Fp) urs.k : ℝ≥0∞) / Fintype.card (Fin urs.k → Fp)
+    (hprob : (3 * urs.k : ℝ≥0∞) / Fintype.card Fp
         < (PMF.uniformOfFintype (Fin urs.k → Fp)).toOuterMeasure (Finset.univ.filter accepts)) :
     (∃ a, IpaRelation urs (deployedCommitment urs hk vk ps ch - pU • urs.u - pW • urs.w)
         (evalVector urs.k xEval)
@@ -192,7 +204,7 @@ noncomputable def legacy_orchard_verifier_vesta_forking_opening [DecidableEq Ves
     (multiopenValue vk ps ch) ξ z
     blind aMulti (adjustedWitness aMulti s (multiopenValue vk ps ch) ξ) s Q accepts hz
     (evalVector_zero urs.k xEval) (commit_adjustedWitness urs aMulti s (multiopenValue vk ps ch) ξ)
-    hbr hprob
+    hbr (by rw [kerr_div_card]; exact hprob)
   rwa [hcommit] at h
 
 open Polynomial in
@@ -226,7 +238,7 @@ noncomputable def legacy_orchard_verifier_vesta_forking_constraint [DecidableEq 
     (hencodes : ∀ a, SnarkRelation urs (deployedCommitment urs hk vk ps ch - pU • urs.u - pW • urs.w)
         (evalVector urs.k xEval) (multiopenValue vk ps ch)
       (circuitSatViaGates fixedCols decodeAdvice decodeInstance y gates hpoly deg) a → S)
-    (hprob : (kerr (Fintype.card Fp) urs.k : ℝ≥0∞) / Fintype.card (Fin urs.k → Fp)
+    (hprob : (3 * urs.k : ℝ≥0∞) / Fintype.card Fp
         < (PMF.uniformOfFintype (Fin urs.k → Fp)).toOuterMeasure (Finset.univ.filter accepts)) :
     S ⊕' NontrivialRelation (F := Fp) urs.g urs.u urs.w := by
   rcases legacy_orchard_verifier_vesta_forking_opening urs hk vk ps ch xEval ξ z blind pU pW s aMulti Q
@@ -263,7 +275,7 @@ noncomputable def legacy_orchard_verifier_vesta_forking_opening_deployed [Decida
     (hU : pU + ch.xi * sU = 0)
     (hcommit : commit urs aMulti = deployedCommitment urs hk vk ps ch - pU • urs.u - pW • urs.w)
     (hs : commit urs s = ps.ipaS - sU • urs.u - sW • urs.w)
-    (hprob : (kerr (Fintype.card Fp) shape.k : ℝ≥0∞) / Fintype.card (Fin shape.k → Fp)
+    (hprob : (3 * shape.k : ℝ≥0∞) / Fintype.card Fp
         < (PMF.uniformOfFintype (Fin shape.k → Fp)).toOuterMeasure
             (Finset.univ.filter (fun χ => DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk ps
               {ch with ipaRound := χ}))) :
@@ -327,7 +339,7 @@ noncomputable def legacy_orchard_verifier_vesta_forking_constraint_deployed [Dec
     (hencodes : ∀ a, SnarkRelation urs (deployedCommitment urs hk vk ps ch - pU • urs.u - pW • urs.w)
         (evalVector urs.k ch.x3) (multiopenValue vk ps ch)
       (circuitSatViaGates fixedCols decodeAdvice decodeInstance y gates hpoly deg) a → S)
-    (hprob : (kerr (Fintype.card Fp) shape.k : ℝ≥0∞) / Fintype.card (Fin shape.k → Fp)
+    (hprob : (3 * shape.k : ℝ≥0∞) / Fintype.card Fp
         < (PMF.uniformOfFintype (Fin shape.k → Fp)).toOuterMeasure
             (Finset.univ.filter (fun χ => DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk ps
               {ch with ipaRound := χ}))) :
@@ -354,7 +366,7 @@ noncomputable def legacy_orchard_verifier_vesta_forking_opening_adaptive [Decida
     (hU : pU + ch.xi * sU = 0)
     (hcommit : commit urs aMulti = deployedCommitment urs hk vk ps ch - pU • urs.u - pW • urs.w)
     (hs : commit urs s = ps.ipaS - sU • urs.u - sW • urs.w)
-    (hprob : (kerr (Fintype.card Fp) shape.k : ℝ≥0∞) / Fintype.card (Fin shape.k → Fp)
+    (hprob : (3 * shape.k : ℝ≥0∞) / Fintype.card Fp
         < (PMF.uniformOfFintype (Fin shape.k → Fp)).toOuterMeasure
             (Finset.univ.filter (fun χ => DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk
               (spliceIpa ps (pathData P χ).1 (pathData P χ).2.1 (pathData P χ).2.2)
@@ -414,7 +426,7 @@ noncomputable def legacy_orchard_verifier_vesta_forking_constraint_adaptive
     (hencodes : ∀ a, SnarkRelation urs (deployedCommitment urs hk vk ps ch - pU • urs.u - pW • urs.w)
         (evalVector urs.k ch.x3) (multiopenValue vk ps ch)
       (circuitSatViaGates fixedCols decodeAdvice decodeInstance y gates hpoly deg) a → S)
-    (hprob : (kerr (Fintype.card Fp) shape.k : ℝ≥0∞) / Fintype.card (Fin shape.k → Fp)
+    (hprob : (3 * shape.k : ℝ≥0∞) / Fintype.card Fp
         < (PMF.uniformOfFintype (Fin shape.k → Fp)).toOuterMeasure
             (Finset.univ.filter (fun χ => DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk
               (spliceIpa ps (pathData P χ).1 (pathData P χ).2.1 (pathData P χ).2.2)
@@ -448,7 +460,7 @@ noncomputable def legacy_orchard_verifier_vesta_forking_opening_rewind [Decidabl
     (hcommit : commit urs aMulti
       = deployedCommitment urs hk vk ps (roChallenges O init ps) - pU • urs.u - pW • urs.w)
     (hs : commit urs s = ps.ipaS - sU • urs.u - sW • urs.w)
-    (hprob : (kerr (Fintype.card Fp) shape.k : ℝ≥0∞) / Fintype.card (Fin shape.k → Fp)
+    (hprob : (3 * shape.k : ℝ≥0∞) / Fintype.card Fp
         < (PMF.uniformOfFintype (Fin shape.k → Fp)).toOuterMeasure
             (Finset.univ.filter (fun χ => DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk ps
               (roChallenges (reprogramRounds O init ps χ) init ps)))) :
@@ -498,7 +510,7 @@ noncomputable def legacy_orchard_verifier_vesta_forking_constraint_rewind
         (deployedCommitment urs hk vk ps (roChallenges O init ps) - pU • urs.u - pW • urs.w)
         (evalVector urs.k (roChallenges O init ps).x3) (multiopenValue vk ps (roChallenges O init ps))
       (circuitSatViaGates fixedCols decodeAdvice decodeInstance y gates hpoly deg) a → S)
-    (hprob : (kerr (Fintype.card Fp) shape.k : ℝ≥0∞) / Fintype.card (Fin shape.k → Fp)
+    (hprob : (3 * shape.k : ℝ≥0∞) / Fintype.card Fp
         < (PMF.uniformOfFintype (Fin shape.k → Fp)).toOuterMeasure
             (Finset.univ.filter (fun χ => DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk ps
               (roChallenges (reprogramRounds O init ps χ) init ps)))) :
@@ -521,7 +533,7 @@ noncomputable def legacy_orchard_verifier_vesta_forking_opening_adaptive_rewind
     (hcommit : commit urs aMulti
       = deployedCommitment urs hk vk ps (roChallenges O init ps) - pU • urs.u - pW • urs.w)
     (hs : commit urs s = ps.ipaS - sU • urs.u - sW • urs.w)
-    (hprob : (kerr (Fintype.card Fp) shape.k : ℝ≥0∞) / Fintype.card (Fin shape.k → Fp)
+    (hprob : (3 * shape.k : ℝ≥0∞) / Fintype.card Fp
         < (PMF.uniformOfFintype (Fin shape.k → Fp)).toOuterMeasure
             (Finset.univ.filter (fun χ => DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk
               (spliceIpa ps (pathData P χ).1 (pathData P χ).2.1 (pathData P χ).2.2)
@@ -576,7 +588,7 @@ noncomputable def legacy_orchard_verifier_vesta_forking_constraint_adaptive_rewi
         (deployedCommitment urs hk vk ps (roChallenges O init ps) - pU • urs.u - pW • urs.w)
         (evalVector urs.k (roChallenges O init ps).x3) (multiopenValue vk ps (roChallenges O init ps))
       (circuitSatViaGates fixedCols decodeAdvice decodeInstance y gates hpoly deg) a → S)
-    (hprob : (kerr (Fintype.card Fp) shape.k : ℝ≥0∞) / Fintype.card (Fin shape.k → Fp)
+    (hprob : (3 * shape.k : ℝ≥0∞) / Fintype.card Fp
         < (PMF.uniformOfFintype (Fin shape.k → Fp)).toOuterMeasure
             (Finset.univ.filter (fun χ => DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk
               (spliceIpa ps (pathData P χ).1 (pathData P χ).2.1 (pathData P χ).2.2)

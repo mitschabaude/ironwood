@@ -37,11 +37,7 @@ The convention:
   relation hardness). A structure with data fields
   cannot be inhabited by proof-irrelevant existence, and a plain `def` cannot conjure the
   data from mere existence via choice — the compiler enforces this, so `noncomputable` is
-  not permitted for these definitions. One scoped exception: the arbitrary-domain
-  adversary reduction (`globalReachSet`, `splitFamilyRand`) is `noncomputable`, solely
-  because it materializes a `Fintype` instance for the Vesta curve group
-  (`Fintype.ofFinite`); the witness data those endpoints produce still flows through the
-  same computable relation kernels.
+  not permitted for these definitions.
 * Efficiency of a reduction is the one property Lean cannot express; it is established by
   inspection. The constructions here are straight-line manipulations of their inputs.
 * Predicates over *named* witnesses (for example, a key-binding break of two specific

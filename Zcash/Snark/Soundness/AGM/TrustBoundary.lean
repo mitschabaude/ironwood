@@ -2,6 +2,7 @@ import Zcash.Snark.Soundness.AGM.BindingSignature
 import Zcash.Snark.Soundness.AGM.Capstone
 import Zcash.Snark.Soundness.AGM.ProbabilityVesta
 import Zcash.Snark.Soundness.Forking.Adversary
+import Zcash.Meta.AxiomCheck
 import Mathlib.Util.AssertNoSorry
 
 /-!
@@ -9,7 +10,9 @@ import Mathlib.Util.AssertNoSorry
 
 The AGM kernels compute representations, openings, relations, certificates, and deployed instances
 as data. `assert_no_sorry` checks the executable producer and consumer path; the guarded reports
-record its proof dependencies.
+record its proof dependencies. The reach-set and split-family producers (`globalReachSet` /
+`splitFamilyRand`) are held at the stronger `assert_computable +choice` tier: plain defs, with
+`Classical.choice` entering only through erased `Prop` positions.
 -/
 
 open Zcash.Snark
@@ -112,9 +115,9 @@ assert_no_sorry ComputedAlgebraicFSFamilyRand.foldedRelationFinder
 assert_no_sorry ComputedAlgebraicFSFamilyRand.binding_prob_le_of_foldedTextbookDL_rand
 assert_no_sorry ComputedAlgebraicFSFamilyRand.foldedSnarkRelationFinder
 assert_no_sorry ComputedAlgebraicFSFamilyRand.snarkFailure_prob_le_of_foldedTextbookDL_rand
-assert_no_sorry ComputedAlgebraicFSFamilyUnbounded.globalReachSet
+assert_computable ComputedAlgebraicFSFamilyUnbounded.globalReachSet +choice
 assert_no_sorry ComputedAlgebraicFSFamilyUnbounded.reachSet_subset_globalReachSet
-assert_no_sorry ComputedAlgebraicFSFamilyUnbounded.splitFamilyRand
+assert_computable ComputedAlgebraicFSFamilyUnbounded.splitFamilyRand +choice
 assert_no_sorry ComputedAlgebraicFSFamilyUnbounded.run_splitFamilyRand_adversary
 assert_no_sorry ComputedAlgebraicFSFamilyUnbounded.binding_prob_le_of_unbounded_foldedTextbookDL
 assert_no_sorry ComputedAlgebraicFSFamilyUnbounded.snarkFailure_prob_le_of_unbounded_foldedTextbookDL
@@ -126,9 +129,9 @@ assert_no_sorry ComputedAlgebraicFSFamilyUnbounded.bindingEventUnbounded
 assert_no_sorry ComputedAlgebraicFSFamilyUnbounded.binding_prob_le_of_unbounded_uniformURS_textbookDL
 assert_no_sorry ComputedAlgebraicFSFamilyUnbounded.binding_prob_le_of_unbounded_generatorRO_textbookDL
 assert_no_sorry ComputedAlgebraicFSFamilyUnboundedRand.determinize
-assert_no_sorry ComputedAlgebraicFSFamilyUnboundedRand.globalReachSet
+assert_computable ComputedAlgebraicFSFamilyUnboundedRand.globalReachSet +choice
 assert_no_sorry ComputedAlgebraicFSFamilyUnboundedRand.reachSet_subset_globalReachSet
-assert_no_sorry ComputedAlgebraicFSFamilyUnboundedRand.splitFamilyRand
+assert_computable ComputedAlgebraicFSFamilyUnboundedRand.splitFamilyRand +choice
 assert_no_sorry ComputedAlgebraicFSFamilyUnboundedRand.run_splitFamilyRand_adversary
 assert_no_sorry ComputedAlgebraicFSFamilyUnboundedRand.binding_prob_le_of_unboundedRand_foldedTextbookDL
 assert_no_sorry ComputedAlgebraicFSFamilyUnboundedRand.snarkFailure_prob_le_of_unboundedRand_foldedTextbookDL

@@ -68,11 +68,12 @@ probability.
 Concrete Orchard captures that exercise the assembly end-to-end and make the Rust/Lean boundary
 less silent. `MaxShape` specializes the verifier shape to the captured column and query
 dimensions while leaving the action count free; `ScheduleMarker` re-encodes captured
-Fiat–Shamir schedules into the model's marker form. `SingleAction/` and `MultiAction/` hold the
-captured single- and multi-action proofs with their shape/VK **faithfulness** checks,
-**Fiat–Shamir** schedule checks, adversarial **negative** fixtures, and — for the single-action
-capture — the checked `TrustBoundary` that turns the fingerprint match into build-time
-obligations (this subtree is the `FixtureCheck` lake target).
+Fiat–Shamir schedules into the model's marker form; `PostNu63` pins the canonical Post-NU6.3
+verifying key across both captures, so fixture drift is visible here rather than only in the
+Rust regeneration. `SingleAction/` and `MultiAction/` hold the captured single- and
+multi-action proofs with their shape/VK **faithfulness** checks, **Fiat–Shamir** schedule
+checks, adversarial **negative** fixtures, and a checked `TrustBoundary` apiece that turns the
+fingerprint match into build-time obligations (this subtree is the `FixtureCheck` lake target).
 
 ### `Soundness/` — the soundness argument
 
@@ -95,7 +96,8 @@ subtrees carry the heavier machinery:
   `ProbabilityVesta`), all under a checked `TrustBoundary`.
 - **`Forking/`** — the reusable Fiat–Shamir forking kernel: random-oracle primitives
   (`Oracle`), the deployed round ordering and rewinding (`Ordering`, `Rewind`), fork-tree
-  existence and the forking-lemma probability bound (`Tree`, `Probability`), and the transcript
+  existence and the forking-lemma probability bound (`Tree`, `Probability`, with
+  `KnowledgeError` proving the closed form `3d/N` of the fork-tree threshold), and the transcript
   assembly and extraction that turn forked transcripts into a deployed IPA tree (`Assembly`,
   `Extractor`). **`Forking/Adversary/`** builds the querying-adversary reduction on top: the
   `Q`-query adaptive adversary model (`OracleComp`), executable recursive forking from a finite
@@ -108,7 +110,9 @@ subtrees carry the heavier machinery:
   (`Ipa`, `IpaPeel`), unfolds the flattened deployed MSM into the recursive generator fold
   (`Fold`), shows deployed acceptance implies halo2's explicit IPA verifier equation
   (`Verification`), and reduces binding over the augmented generators to discrete-log-relation
-  hardness (`Binding`), under a checked `TrustBoundary`.
+  hardness (`Binding`), under a checked `TrustBoundary`. `ConcreteBounds` reads the fork-tree
+  knowledge error off the deployed Orchard parameters as a concrete number (`33/scalarFieldOrder
+  ≈ 2⁻²⁴⁹` at the captured IPA depth `k = 11`), rather than an asymptotic family.
 
 ## Protocol security — `Zcash/Security/`
 

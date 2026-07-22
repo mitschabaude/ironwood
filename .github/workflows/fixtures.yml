@@ -1,0 +1,139 @@
+name: Fixtures
+
+# Enforces that the checked-in Post-NU6.3 verifier fixtures
+# (`Zcash/Snark/Fixtures/{SingleAction,MultiAction}/Fixture.lean`) are byte-for-byte
+# what the pinned upstream Rust capture regenerates. The fixtures stay checked in --
+# they are the formal artifact the Lean development proves about, imported by the
+# `FixtureCheck` target and required for a self-contained `lake build` -- and this
+# workflow closes the "trust that a human ran the capture correctly" gap by
+# regenerating them in CI and diffing. See zcash/ironwood#54.
+#
+# Determinism: the capture uses fixed ChaCha20 seeds and the exporter orders points by
+# a coordinate-key `BTreeSet` (not HashMap iteration order), and field/curve arithmetic
+# is platform-independent, so regeneration is bit-reproducible -- a diff means the
+# fixtures genuinely drifted from the pinned upstream, not run-to-run noise.
+#
+# Pins: `ORCHARD_REF` below is the Orchard release tag that ships the zcash/orchard#531
+# fingerprint capture, verified to regenerate the checked-in fixtures byte-for-byte. Bump it to
+# a newer Orchard release to re-check the fixtures against evolved upstream. Halo2 is not pinned
+# here: the released Orchard depends on `halo2_proofs` 0.3.3 from crates.io (no
+# `[patch.crates-io]`), so cargo resolves Halo2 during the build below -- no separate Halo2
+# pin/checkout. With both pins now stable, `Fixtures CI` is eligible to be marked a required
+# status check.
+
+# Always triggers, so the `Fixtures CI` gate always reports (a workflow skipped by
+# `on.paths` would leave a required check pending). The heavy regeneration is instead
+# gated on a path filter computed inside the run, so it only builds Rust when the
+# fixtures or the pins (this workflow) actually change.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+permissions: {}
+
+env:
+  # Orchard release tag shipping zcash/orchard#531 ("Add Post-NU6.3 verifier fingerprint fixtures").
+  ORCHARD_REPO: zcash/orchard
+  ORCHARD_REF: 0.15.1
+
+jobs:
+  changes:
+    name: Detect fixture-relevant changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      fixtures: ${{ steps.filter.outputs.fixtures }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          persist-credentials: false
+      # Regeneration is expensive (a real k=11 Orchard proof + verify), so only run it
+      # when a captured fixture or the pins in this workflow change.
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        id: filter
+        with:
+          filters: |
+            fixtures:
+              - 'Zcash/Snark/Fixtures/SingleAction/Fixture.lean'
+              - 'Zcash/Snark/Fixtures/MultiAction/Fixture.lean'
+              - '.github/workflows/fixtures.yml'
+
+  verify:
+    name: Regenerate and diff the captured fixtures
+    needs: changes
+    if: needs.changes.outputs.fixtures == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out Ironwood (the fixtures under test)
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          path: ironwood
+          persist-credentials: false
+      - name: Check out the pinned Orchard capture crate
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: ${{ env.ORCHARD_REPO }}
+          ref: ${{ env.ORCHARD_REF }}
+          path: orchard-capture
+          persist-credentials: false
+      # `orchard-capture/rust-toolchain.toml` pins the channel; `rustup show` installs it
+      # so the rust-cache key and the build agree on the toolchain.
+      - name: Install the pinned Rust toolchain
+        working-directory: orchard-capture
+        run: rustup show
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          workspaces: orchard-capture
+      # Emits the two fixtures directly over the checked-in copies. Halo2 resolves from
+      # crates.io (`halo2_proofs` 0.3.3, Orchard's normal dependency), so no separate Halo2
+      # checkout is needed. The filter matches both accepting captures (`fingerprint_capture`
+      # and `fingerprint_capture_two_actions`) and not the Rust-only rejection tests.
+      - name: Regenerate the fixtures from the pinned capture
+        working-directory: orchard-capture
+        env:
+          ORCHARD_LEAN_SINGLE_FIXTURE_OUT: ${{ github.workspace }}/ironwood/Zcash/Snark/Fixtures/SingleAction/Fixture.lean
+          ORCHARD_LEAN_MULTI_FIXTURE_OUT: ${{ github.workspace }}/ironwood/Zcash/Snark/Fixtures/MultiAction/Fixture.lean
+        run: cargo test --lib --features verifier-fingerprint circuit::fingerprint::fingerprint_capture -- --nocapture
+      - name: Enforce the checked-in fixtures match the regenerated capture
+        working-directory: ironwood
+        run: |
+          if ! git diff --exit-code -- \
+              Zcash/Snark/Fixtures/SingleAction/Fixture.lean \
+              Zcash/Snark/Fixtures/MultiAction/Fixture.lean; then
+            echo "::error::Checked-in fixtures differ from the pinned Orchard/Halo2 capture. Regenerate them (see the capture commands in Zcash/Snark/Fixtures and orchard src/circuit/fingerprint/mod.rs) and commit the result."
+            exit 1
+          fi
+          echo "Checked-in fixtures match the pinned capture."
+
+  fixtures-ci:
+    # The single stable check to mark as a required status check. It always runs, so it
+    # always reports; it fails only if regeneration actually diverged.
+    name: Fixtures CI
+    needs: [changes, verify]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate on the verification result
+        env:
+          CHANGES_RESULT: ${{ needs.changes.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+        run: |
+          if [ "$CHANGES_RESULT" != "success" ]; then
+            echo "The changes-detection job did not succeed."
+            exit 1
+          fi
+          case "$VERIFY_RESULT" in
+            success|skipped)
+              echo "Fixtures matched the pinned capture, or regeneration was not required for this change." ;;
+            *)
+              echo "Fixture verification result: $VERIFY_RESULT."
+              exit 1 ;;
+          esac

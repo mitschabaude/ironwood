@@ -7,8 +7,8 @@ development. Anchors point to a module + name under `Zcash/`.
 .iw-glossary { margin: 1.3rem 0; display: grid; gap: 26px; }
 .iw-glossary section { display: grid; gap: 9px; }
 .iw-glossary .grp {
-  font-size: .8rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .11em; opacity: .55; margin: 0;
+  font-size: .92rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; opacity: .78; margin: 0;
 }
 .iw-glossary .g {
   border: 1px solid var(--table-border-color, rgba(128,140,170,.28));
