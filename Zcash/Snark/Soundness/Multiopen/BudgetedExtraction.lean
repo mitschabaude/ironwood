@@ -591,4 +591,314 @@ theorem deployed_value_check_node_binding_budgeted [DecidableEq G] [Inhabited G]
         (χ s t)))
     hlen' hsetpts' hsetevals' hdeg' hnode' hopen' hu' j₀ hp
 
+/-! ## The full joint accept event and the budgeted member terminal -/
+
+/-- **The full joint accept event** over the `(x₁, x₂, x₃, x₄)` challenge draw: the pinned `x₁`
+rewind accepts at `w.1` (carrying its own opened `x₄` batch), and the inner joint event holds at
+the *canonical* `x₁` run's base with the `x₂` blinder supplied by the strategy `b₂f` at that
+challenge. Every level's base is a function of the earlier challenges through the canonical
+selectors, so this is a genuine event over `Fp⁴` — the single-event replacement for the whole
+`∀`-over-runs floor family of `deployed_member_node_binding`. -/
+def memberJointAccept [DecidableEq G] [Inhabited G] {shape : Shape} (urs : URS G)
+    (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
+    (ch : Challenges shape.k Fp) (b₂f : Fp → Fin (2 ^ urs.k) → Fp) :
+    Set (Fp × Fp × Fp × Fp) :=
+  {w : Fp × Fp × Fp × Fp | OpenedX1PinnedAccept urs hk vk ps ch w.1 ∧
+    w.2 ∈ innerJointAccept urs hk vk ((canonicalX1Run urs hk vk ps ch w.1).spliced ps)
+      ((canonicalX1Run urs hk vk ps ch w.1).challenges ch w.1) (b₂f w.1)}
+
+set_option maxHeartbeats 4000000 in
+/-- **The deployed member-column node binding from the joint accept floor (the budgeted member
+terminal).** The conclusion of `deployed_member_node_binding` — each decoded member column of point
+set `i` takes its claimed evaluation at each of the set's points, or a nontrivial `(g, U, W)`
+relation exists — with the entire nested floor family (`hξ₀`/`hprob1`/`hx2`/`hx3anchor`/`hprob3`/
+`hprob4`) replaced by the single joint floor `t₁ + (t₂ + t₃ + t₄) < μ(memberJointAccept)` at the
+honest-base threshold constants. The heavy-fiber Markov descent peels the `x₁` threshold, forking
+`|members|` distinct heavy compression samples (each self-anchoring: positive fiber measure means
+the pinned `x₁` accept holds and the canonical run carries the batch); every sample retains the
+inner joint floor at its canonical base, which the budgeted value check
+(`deployed_value_check_node_binding_budgeted`) spends after transporting the thresholds across the
+splice (`x1Run_pairCount`/`x1Run_allPts`). The samples' aggregate identities separate the members
+(`member_binding_of_x1_samples`), exactly as in the `∀`-over-runs core. `havoid` is required only
+at the canonical runs. -/
+theorem deployed_member_node_binding_budgeted [DecidableEq G] [Inhabited G] {shape : Shape}
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    {a₀ : Fin (2 ^ urs.k) → Fp} {pU pW : Fp}
+    {pbatch : OpenedBatchOpenings urs (evalVector urs.k ch.x3)
+      (x4BatchCommitments urs hk vk ps ch) (x4BatchEvals vk ps ch) a₀ pU pW}
+    (i : ℕ) (hi : i < deployedX4PairCount vk ps ch)
+    (md : OpenedMemberDecode urs hk vk ps ch pbatch i hi)
+    (b₂f : Fp → Fin (2 ^ urs.k) → Fp)
+    (hJ : (((deployedSetQueries vk ps ch i).length - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+        + (((deployedX4PairCount vk ps ch - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + ((max (2 ^ urs.k) (deployedAllPts vk ps ch).card
+              + (deployedAllPts vk ps ch).card : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + (deployedX4PairCount vk ps ch : ℝ≥0∞) / Fintype.card Fp)
+      < (PMF.uniformOfFintype (Fp × Fp × Fp × Fp)).toOuterMeasure
+          (memberJointAccept urs hk vk ps ch b₂f))
+    (havoid : ∀ (ξv ζv χv : Fp),
+      OpenedX3Accept urs hk vk
+        ((canonicalX2Run urs hk vk ((canonicalX1Run urs hk vk ps ch ξv).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) (b₂f ξv) ζv).spliced
+          ((canonicalX1Run urs hk vk ps ch ξv).spliced ps))
+        ((canonicalX2Run urs hk vk ((canonicalX1Run urs hk vk ps ch ξv).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) (b₂f ξv) ζv).challenges
+          ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) ζv)
+        (evalVector urs.k χv) χv →
+      ∀ k', χv ∉ deployedSetPts vk ((canonicalX1Run urs hk vk ps ch ξv).spliced ps)
+        ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) k')
+    (hql : ∀ qc ∈ deployedSetQueries vk ps ch i,
+      qc.2.length
+        = ((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i []).length)
+    (idx : Fin ((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i []).length)
+    (m₀ : Fin (deployedSetQueries vk ps ch i).length) :
+    (coeffsToPoly (md.cols m₀)).eval
+        (((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i [])[idx])
+      = ((deployedSetQueries vk ps ch i).getD (m₀ : ℕ) (.point 0, [])).2.getD (idx : ℕ) 0
+    ∨ HasNontrivialRelation (F := Fp) urs.g urs.u urs.w := by
+  classical
+  by_cases hrel : HasNontrivialRelation (F := Fp) urs.g urs.u urs.w
+  · exact Or.inr hrel
+  refine Or.inl ?_
+  have hnpos : 0 < (deployedSetQueries vk ps ch i).length :=
+    lt_of_le_of_lt (Nat.zero_le _) m₀.isLt
+  have hnn : (deployedSetQueries vk ps ch i).length - 1 + 1
+      = (deployedSetQueries vk ps ch i).length := Nat.succ_pred_eq_of_pos hnpos
+  have hcard0 : ((Fintype.card Fp : ℕ) : ℝ≥0∞) ≠ 0 :=
+    Nat.cast_ne_zero.mpr Fintype.card_ne_zero
+  -- the residual (inner) threshold is finite
+  have htres : (((deployedX4PairCount vk ps ch - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+      + ((max (2 ^ urs.k) (deployedAllPts vk ps ch).card
+          + (deployedAllPts vk ps ch).card : ℕ) : ℝ≥0∞) / Fintype.card Fp
+      + (deployedX4PairCount vk ps ch : ℝ≥0∞) / Fintype.card Fp) ≠ ⊤ :=
+    ENNReal.add_ne_top.mpr
+      ⟨ENNReal.add_ne_top.mpr
+        ⟨(ENNReal.div_lt_top (ENNReal.natCast_ne_top _) hcard0).ne,
+          (ENNReal.div_lt_top (ENNReal.natCast_ne_top _) hcard0).ne⟩,
+        (ENNReal.div_lt_top (ENNReal.natCast_ne_top _) hcard0).ne⟩
+  -- level-1 descent: the heavy compression challenges keep the inner x₂+x₃+x₄ floor
+  have hheavy1 := uniformOfFintype_heavy_fiber_lt (α := Fp) (β := Fp × Fp × Fp)
+    (memberJointAccept urs hk vk ps ch b₂f) htres hJ
+  -- the x₁ sample family, reindexed to the member count, each sample carrying the inner floor
+  have hξfam : ∃ ξ : Fin (deployedSetQueries vk ps ch i).length → Fp,
+      Function.Injective ξ ∧ ∀ s,
+        ((deployedX4PairCount vk ps ch - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + ((max (2 ^ urs.k) (deployedAllPts vk ps ch).card
+              + (deployedAllPts vk ps ch).card : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + (deployedX4PairCount vk ps ch : ℝ≥0∞) / Fintype.card Fp
+        < (PMF.uniformOfFintype (Fp × Fp × Fp)).toOuterMeasure
+            {v : Fp × Fp × Fp | (ξ s, v) ∈ memberJointAccept urs hk vk ps ch b₂f} := by
+    have hne : {ξv : Fp |
+        ((deployedX4PairCount vk ps ch - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + ((max (2 ^ urs.k) (deployedAllPts vk ps ch).card
+              + (deployedAllPts vk ps ch).card : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + (deployedX4PairCount vk ps ch : ℝ≥0∞) / Fintype.card Fp
+        < (PMF.uniformOfFintype (Fp × Fp × Fp)).toOuterMeasure
+            {v : Fp × Fp × Fp | (ξv, v) ∈ memberJointAccept urs hk vk ps ch b₂f}}.Nonempty := by
+      refine nonempty_of_uniformOfFintype_toOuterMeasure_ne_zero (fun h0 => ?_)
+      rw [h0] at hheavy1
+      exact absurd hheavy1 (not_lt.mpr zero_le)
+    obtain ⟨ξ₀', hξ₀'⟩ := hne
+    rw [uniformOfFintype_toOuterMeasure_setOf_filter] at hheavy1
+    obtain ⟨ξ', hinj, _, hacc⟩ := exists_injective_accepting_of_measure
+      (acc := fun ξv =>
+        ((deployedX4PairCount vk ps ch - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + ((max (2 ^ urs.k) (deployedAllPts vk ps ch).card
+              + (deployedAllPts vk ps ch).card : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + (deployedX4PairCount vk ps ch : ℝ≥0∞) / Fintype.card Fp
+        < (PMF.uniformOfFintype (Fp × Fp × Fp)).toOuterMeasure
+            {v : Fp × Fp × Fp | (ξv, v) ∈ memberJointAccept urs hk vk ps ch b₂f})
+      hξ₀' hheavy1
+    exact ⟨fun s => ξ' (Fin.cast hnn.symm s),
+      fun a b h => Fin.cast_injective hnn.symm (hinj h), fun s => hacc _⟩
+  obtain ⟨ξ, hξinj, hξheavy⟩ := hξfam
+  -- each sampled fiber is nonempty, so each sample's pinned x₁ rewind accepts
+  have hpin : ∀ s, OpenedX1PinnedAccept urs hk vk ps ch (ξ s) := by
+    intro s
+    have hne : {v : Fp × Fp × Fp |
+        (ξ s, v) ∈ memberJointAccept urs hk vk ps ch b₂f}.Nonempty := by
+      refine nonempty_of_uniformOfFintype_toOuterMeasure_ne_zero (fun h0 => ?_)
+      have := hξheavy s
+      rw [h0] at this
+      exact absurd this (not_lt.mpr zero_le)
+    obtain ⟨v, hv⟩ := hne
+    exact hv.1
+  -- the sampled fiber is the inner joint event at the canonical x₁ base
+  have hinner : ∀ s,
+      ((deployedX4PairCount vk ps ch - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+        + ((max (2 ^ urs.k) (deployedAllPts vk ps ch).card
+            + (deployedAllPts vk ps ch).card : ℕ) : ℝ≥0∞) / Fintype.card Fp
+        + (deployedX4PairCount vk ps ch : ℝ≥0∞) / Fintype.card Fp
+      < (PMF.uniformOfFintype (Fp × Fp × Fp)).toOuterMeasure
+          (innerJointAccept urs hk vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) (b₂f (ξ s))) := by
+    intro s
+    have hset : {v : Fp × Fp × Fp | (ξ s, v) ∈ memberJointAccept urs hk vk ps ch b₂f}
+        = innerJointAccept urs hk vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) (b₂f (ξ s)) :=
+      Set.ext fun v => ⟨fun h => h.2, fun h => ⟨hpin s, h⟩⟩
+    rw [← hset]
+    exact hξheavy s
+  -- per-sample canonical-run payload: the pinned x₄ batch at the canonical base
+  have hbatch : ∀ s, ∃ (aR : Fin (2 ^ urs.k) → Fp) (pUR pWR : Fp),
+      Nonempty (OpenedBatchOpenings urs
+        (evalVector urs.k (((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)).x3))
+        (x4BatchCommitments urs hk vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+          ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)))
+        (x4BatchEvals vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+          ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s))) aR pUR pWR) := by
+    intro s
+    obtain ⟨aR, pUR, pWR, _, hne⟩ := canonicalX1Run_accepts urs hk vk ps ch (hpin s)
+    exact ⟨aR, pUR, pWR, hne⟩
+  choose aF pUF pWF hBne using hbatch
+  -- the node: the idx-th point of set i
+  have hndp := constructIntermediateSets_points_nodup (assembleQueries vk ps ch) i
+  have hnodeinj := List.nodup_iff_injective_getElem.mp hndp
+  -- per-sample aggregate identity: the ξ-fold of the member values equals the ξ-fold of the
+  -- claimed evaluations
+  have hagg : ∀ s : Fin (deployedSetQueries vk ps ch i).length,
+      ∑ m : Fin (deployedSetQueries vk ps ch i).length,
+          ξ s ^ (m : ℕ) * (coeffsToPoly (md.cols m)).eval
+            (((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i [])[idx])
+        = ∑ m : Fin (deployedSetQueries vk ps ch i).length,
+            ξ s ^ (m : ℕ)
+              * ((deployedSetQueries vk ps ch i).getD (m : ℕ) (.point 0, [])).2.getD (idx : ℕ) 0 := by
+    intro s
+    have hcc : deployedX4PairCount vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+          ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s))
+        = deployedX4PairCount vk ps ch := x1Run_pairCount vk ps ch _ (ξ s)
+    -- the node lies in set i at the ξ-rewound base
+    have hp_i : (((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i [])[idx])
+        ∈ deployedSetPts vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) i := by
+      rw [x1Run_setPts, deployedSetPts]
+      exact List.mem_toFinset.mpr (List.getElem_mem idx.isLt)
+    -- the inner joint floor, thresholds transported across the x₁ splice
+    have hJ_s : ((deployedX4PairCount vk
+            ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) - 1 : ℕ) : ℝ≥0∞)
+          / Fintype.card Fp
+        + ((max (2 ^ urs.k) (deployedAllPts vk
+              ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+              ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s))).card
+            + (deployedAllPts vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+              ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s))).card : ℕ) : ℝ≥0∞)
+          / Fintype.card Fp
+        + (deployedX4PairCount vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) : ℝ≥0∞)
+          / Fintype.card Fp
+        < (PMF.uniformOfFintype (Fp × Fp × Fp)).toOuterMeasure
+            (innerJointAccept urs hk vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+              ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) (b₂f (ξ s))) := by
+      rw [x1Run_pairCount vk ps ch _ (ξ s), x1Run_allPts vk ps ch _ (ξ s)]
+      exact hinner s
+    -- the budgeted value check at the ξ-rewound base
+    have hA := deployed_value_check_node_binding_budgeted urs hk vk
+      ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+      ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s))
+      (hBne s).some (b₂f (ξ s)) hJ_s
+      (fun ζv χv h3 => havoid (ξ s) ζv χv h3)
+      ⟨deployedX4PairCount vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+          ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) - 1 - i,
+        by omega⟩
+      (by
+        rw [show deployedX4PairCount vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) - 1
+            - (deployedX4PairCount vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+                ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) - 1 - i) = i from
+          by omega]
+        exact hp_i)
+    rcases hA with hA | hdlr
+    swap
+    · exact absurd hdlr hrel
+    -- reverse → forward set fields at the ξ-base
+    have hrev : (deployedSetsForEval vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+          ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s))).reverse.getD
+            (deployedX4PairCount vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+              ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) - 1 - i) ([], [], 0)
+        = (deployedSetsForEval vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s))).getD i ([], [], 0) := by
+      rw [List.getD_eq_getElem?_getD,
+        List.getElem?_reverse (by rw [deployedSetsForEval_length, hcc]; omega),
+        deployedSetsForEval_length,
+        show deployedX4PairCount vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) - 1
+          - (deployedX4PairCount vk ((canonicalX1Run urs hk vk ps ch (ξ s)).spliced ps)
+              ((canonicalX1Run urs hk vk ps ch (ξ s)).challenges ch (ξ s)) - 1 - i) = i from
+          by omega,
+        ← List.getD_eq_getElem?_getD]
+    obtain ⟨hfpts, hfevals⟩ :=
+      deployedSetsForEval_x1_getD_fields vk ps ch (canonicalX1Run urs hk vk ps ch (ξ s)) (ξ s) hi
+    rw [hrev, hfpts, hfevals] at hA
+    -- the interpolant takes the compressed claimed evaluation at the node
+    rw [lagrangePoly_eval_node hnodeinj idx] at hA
+    rw [compressSet_snd_getD (ξ s) (deployedSetQueries vk ps ch i) (.point 0, [])
+      idx.isLt hql] at hA
+    -- the aggregate is the ξ-fold of the member values
+    have hB := openedX1_agg_member_eval urs hk vk ps ch i hi md
+      (canonicalX1Run urs hk vk ps ch (ξ s)) (ξ s) (hBne s).some
+      (((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i [])[idx])
+    rcases hB with hB | hdlr
+    swap
+    · exact absurd hdlr hrel
+    rw [← hB, hA, ← Fin.sum_univ_eq_sum_range (fun m => ξ s ^ m
+      * ((deployedSetQueries vk ps ch i).getD m (.point 0, [])).2.getD (idx : ℕ) 0)]
+  -- separate the members at the distinct samples
+  exact member_binding_of_x1_samples (fun m => coeffsToPoly (md.cols m))
+    (fun m => ((deployedSetQueries vk ps ch i).getD (m : ℕ) (.point 0, [])).2.getD (idx : ℕ) 0)
+    (((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i [])[idx])
+    ξ hξinj hagg m₀
+
+/-- **The combined soundness budget for the deployed member decode.** *Either* the joint accept
+event over the four fresh challenges sits within the knowledge-error budget
+`t₁ + (t₂ + t₃ + t₄)` — the four honest-base squeeze thresholds — *or* every decoded member column
+of point set `i` takes its claimed evaluation at every one of the set's points (on pain of a
+computed `(g, U, W)` relation). The contrapositive reading of the budgeted member terminal: any
+adversary whose acceptance mass beats the budget extracts. -/
+theorem deployed_member_budget [DecidableEq G] [Inhabited G] {shape : Shape}
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    {a₀ : Fin (2 ^ urs.k) → Fp} {pU pW : Fp}
+    {pbatch : OpenedBatchOpenings urs (evalVector urs.k ch.x3)
+      (x4BatchCommitments urs hk vk ps ch) (x4BatchEvals vk ps ch) a₀ pU pW}
+    (i : ℕ) (hi : i < deployedX4PairCount vk ps ch)
+    (md : OpenedMemberDecode urs hk vk ps ch pbatch i hi)
+    (b₂f : Fp → Fin (2 ^ urs.k) → Fp)
+    (havoid : ∀ (ξv ζv χv : Fp),
+      OpenedX3Accept urs hk vk
+        ((canonicalX2Run urs hk vk ((canonicalX1Run urs hk vk ps ch ξv).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) (b₂f ξv) ζv).spliced
+          ((canonicalX1Run urs hk vk ps ch ξv).spliced ps))
+        ((canonicalX2Run urs hk vk ((canonicalX1Run urs hk vk ps ch ξv).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) (b₂f ξv) ζv).challenges
+          ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) ζv)
+        (evalVector urs.k χv) χv →
+      ∀ k', χv ∉ deployedSetPts vk ((canonicalX1Run urs hk vk ps ch ξv).spliced ps)
+        ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) k') :
+    (PMF.uniformOfFintype (Fp × Fp × Fp × Fp)).toOuterMeasure
+        (memberJointAccept urs hk vk ps ch b₂f)
+      ≤ (((deployedSetQueries vk ps ch i).length - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+        + (((deployedX4PairCount vk ps ch - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + ((max (2 ^ urs.k) (deployedAllPts vk ps ch).card
+              + (deployedAllPts vk ps ch).card : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + (deployedX4PairCount vk ps ch : ℝ≥0∞) / Fintype.card Fp)
+    ∨ ∀ (idx : Fin ((constructIntermediateSets
+          (assembleQueries vk ps ch)).points.getD i []).length)
+        (m₀ : Fin (deployedSetQueries vk ps ch i).length),
+        (coeffsToPoly (md.cols m₀)).eval
+            (((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i [])[idx])
+          = ((deployedSetQueries vk ps ch i).getD (m₀ : ℕ) (.point 0, [])).2.getD (idx : ℕ) 0
+        ∨ HasNontrivialRelation (F := Fp) urs.g urs.u urs.w := by
+  by_cases hJ : (((deployedSetQueries vk ps ch i).length - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+      + (((deployedX4PairCount vk ps ch - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+        + ((max (2 ^ urs.k) (deployedAllPts vk ps ch).card
+            + (deployedAllPts vk ps ch).card : ℕ) : ℝ≥0∞) / Fintype.card Fp
+        + (deployedX4PairCount vk ps ch : ℝ≥0∞) / Fintype.card Fp)
+    < (PMF.uniformOfFintype (Fp × Fp × Fp × Fp)).toOuterMeasure
+        (memberJointAccept urs hk vk ps ch b₂f)
+  · exact Or.inr (fun idx m₀ => deployed_member_node_binding_budgeted urs hk vk ps ch i hi md
+      b₂f hJ havoid (deployedSetQueries_eval_length vk ps ch i) idx m₀)
+  · exact Or.inl (not_lt.mp hJ)
+
 end Zcash.Snark
