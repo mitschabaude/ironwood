@@ -171,4 +171,103 @@ theorem combined_two_floor_failure_le (acc₁ : Fp → Prop) (acc₂ : Fp → Fp
   · exact nested_squeeze_floor_failure_le (fun _ : Fp => acc₁) t₁
   · exact nested_squeeze_floor_failure_le_right acc₂ t₂
 
+/-- **Equiv-invariance of the uniform outer measure.** A measure-preserving relabelling of a finite
+sample space leaves the uniform outer measure of a set unchanged: `μ_α (e ⁻¹' T) = μ_β T`. Both
+sides are `Nat.card / card`, and an `Equiv` preserves both the numerator (it restricts to a
+bijection `e ⁻¹' T ≃ T`) and the denominator (`Fintype.card_congr`). This is what lets each squeeze
+route its fresh challenge slot to the coordinate its fiber bound consumes. -/
+theorem uniformOfFintype_toOuterMeasure_preimage_equiv {α β : Type*}
+    [Fintype α] [Nonempty α] [Fintype β] [Nonempty β] (e : α ≃ β) (T : Set β) :
+    (PMF.uniformOfFintype α).toOuterMeasure (e ⁻¹' T)
+      = (PMF.uniformOfFintype β).toOuterMeasure T := by
+  rw [uniformOfFintype_toOuterMeasure_set, uniformOfFintype_toOuterMeasure_set,
+      Fintype.card_congr e]
+  congr 1
+  exact_mod_cast Nat.card_congr (e.subtypeEquiv (fun _ => Iff.rfl))
+
+/-- **Reindexed single-squeeze floor-failure bound.** `nested_squeeze_floor_failure_le` transported
+along a relabelling `e : W ≃ Fp × B` of the full sample space that names the squeeze's fresh slot as
+the first coordinate `(e w).1` and its base as `(e w).2`. The failure set is `e ⁻¹'` the primitive's
+set, so `uniformOfFintype_toOuterMeasure_preimage_equiv` reduces the bound to the primitive. This is
+the general tool the four-squeeze budget applies once per squeeze. -/
+theorem floor_failure_reindex_le {W B : Type*} [Fintype W] [Nonempty W] [Fintype B] [Nonempty B]
+    (e : W ≃ Fp × B) (acc : B → Fp → Prop) (t : ℝ≥0∞) :
+    (PMF.uniformOfFintype W).toOuterMeasure
+        {w : W | acc (e w).2 (e w).1 ∧
+          ¬ (t < (PMF.uniformOfFintype Fp).toOuterMeasure
+                  (Finset.univ.filter (acc (e w).2)))}
+      ≤ t := by
+  have hset : {w : W | acc (e w).2 (e w).1 ∧
+        ¬ (t < (PMF.uniformOfFintype Fp).toOuterMeasure (Finset.univ.filter (acc (e w).2)))}
+      = e ⁻¹' {x : Fp × B | acc x.2 x.1 ∧
+          ¬ (t < (PMF.uniformOfFintype Fp).toOuterMeasure (Finset.univ.filter (acc x.2)))} := rfl
+  rw [hset, uniformOfFintype_toOuterMeasure_preimage_equiv e]
+  exact nested_squeeze_floor_failure_le acc t
+
+/-- Relabelling routing the x₂ challenge to the fiber's first coordinate, its predecessors to the
+base. -/
+def reindexX2 : (Fp × Fp × Fp × Fp) ≃ Fp × (Fp × Fp × Fp) :=
+  ⟨fun w => (w.2.1, w.1, w.2.2.1, w.2.2.2), fun p => (p.2.1, p.1, p.2.2.1, p.2.2.2),
+    fun _ => rfl, fun _ => rfl⟩
+
+/-- Relabelling routing the x₃ challenge to the fiber's first coordinate, its predecessors to the
+base. -/
+def reindexX3 : (Fp × Fp × Fp × Fp) ≃ Fp × (Fp × Fp × Fp) :=
+  ⟨fun w => (w.2.2.1, w.1, w.2.1, w.2.2.2), fun p => (p.2.1, p.2.2.1, p.1, p.2.2.2),
+    fun _ => rfl, fun _ => rfl⟩
+
+/-- Relabelling routing the x₄ challenge to the fiber's first coordinate, its predecessors to the
+base. -/
+def reindexX4 : (Fp × Fp × Fp × Fp) ≃ Fp × (Fp × Fp × Fp) :=
+  ⟨fun w => (w.2.2.2, w.1, w.2.1, w.2.2.1), fun p => (p.2.1, p.2.2.1, p.2.2.2, p.1),
+    fun _ => rfl, fun _ => rfl⟩
+
+/-- **Four-squeeze combined floor-failure budget — the unconditional multiopen budget.** Over the
+joint uniform draw of the four fresh challenges `w = (x₁, x₂, x₃, x₄)`, the probability that *any* of
+the four nested squeeze floors fails — squeeze `i` accepts at its fresh slot yet its accept-measure
+at the base the earlier challenges determine sits at or below its threshold `tᵢ` — is bounded by the
+sum of the four thresholds `t₁ + t₂ + t₃ + t₄`.
+
+Each squeeze's failure is bounded by `tᵢ` via `floor_failure_reindex_le` (routing that squeeze's
+fresh challenge to the fiber's first coordinate and the earlier challenges to the base, through
+`reindexX{2,3,4}`), and the four events union additively with no cross term (`measure_union_le`
+iterated). This is the combined soundness budget in the sampled-run model: the extraction fails only
+inside this event, so the computed-path knowledge error is at most `t₁ + t₂ + t₃ + t₄` plus the AGM
+commitment-binding term. Wiring the deployed terminal's `hprob*` floors to instantiate `accᵢ` at
+`OpenedX{1,2,3,4}Accept` and the earlier-challenge-determined bases (the `reprogramX*`
+run-determination) is the remaining plumbing; the budget arithmetic and its composition are settled
+here. -/
+theorem combined_floor_failure_le
+    (acc₁ : Fp → Prop) (acc₂ : Fp → Fp → Prop)
+    (acc₃ : Fp → Fp → Fp → Prop) (acc₄ : Fp → Fp → Fp → Fp → Prop)
+    (t₁ t₂ t₃ t₄ : ℝ≥0∞) :
+    (PMF.uniformOfFintype (Fp × Fp × Fp × Fp)).toOuterMeasure
+        ({w : Fp × Fp × Fp × Fp | acc₁ w.1 ∧
+            ¬ (t₁ < (PMF.uniformOfFintype Fp).toOuterMeasure (Finset.univ.filter acc₁))}
+          ∪ {w : Fp × Fp × Fp × Fp | acc₂ w.1 w.2.1 ∧
+            ¬ (t₂ < (PMF.uniformOfFintype Fp).toOuterMeasure (Finset.univ.filter (acc₂ w.1)))}
+          ∪ {w : Fp × Fp × Fp × Fp | acc₃ w.1 w.2.1 w.2.2.1 ∧
+            ¬ (t₃ < (PMF.uniformOfFintype Fp).toOuterMeasure
+                    (Finset.univ.filter (acc₃ w.1 w.2.1)))}
+          ∪ {w : Fp × Fp × Fp × Fp | acc₄ w.1 w.2.1 w.2.2.1 w.2.2.2 ∧
+            ¬ (t₄ < (PMF.uniformOfFintype Fp).toOuterMeasure
+                    (Finset.univ.filter (acc₄ w.1 w.2.1 w.2.2.1)))})
+      ≤ t₁ + t₂ + t₃ + t₄ := by
+  refine le_trans (MeasureTheory.measure_union_le _ _) (add_le_add ?_ ?_)
+  refine le_trans (MeasureTheory.measure_union_le _ _) (add_le_add ?_ ?_)
+  refine le_trans (MeasureTheory.measure_union_le _ _) (add_le_add ?_ ?_)
+  · exact nested_squeeze_floor_failure_le (fun _ : Fp × Fp × Fp => acc₁) t₁
+  · refine le_of_eq_of_le (congrArg _ ?_)
+      (floor_failure_reindex_le reindexX2 (fun b c => acc₂ b.1 c) t₂)
+    ext w
+    simp only [reindexX2, Equiv.coe_fn_mk, Set.mem_setOf_eq]
+  · refine le_of_eq_of_le (congrArg _ ?_)
+      (floor_failure_reindex_le reindexX3 (fun b c => acc₃ b.1 b.2.1 c) t₃)
+    ext w
+    simp only [reindexX3, Equiv.coe_fn_mk, Set.mem_setOf_eq]
+  · refine le_of_eq_of_le (congrArg _ ?_)
+      (floor_failure_reindex_le reindexX4 (fun b d => acc₄ b.1 b.2.1 b.2.2 d) t₄)
+    ext w
+    simp only [reindexX4, Equiv.coe_fn_mk, Set.mem_setOf_eq]
+
 end Zcash.Snark
