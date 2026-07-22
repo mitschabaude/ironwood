@@ -9,8 +9,9 @@ import Zcash.Snark.Verifier.Assemble
 The IPA extractor returns one coefficient vector for the deployed batched multiopen commitment. The gate
 check, however, talks about the individual column polynomials. This module records the missing witness
 decode layer: if rewinding supplies openings of the same batched commitment at enough distinct batching
-challenges, `batch_open_soundV` recovers the individual columns and proves that they open the claimed
-commitments and evaluations.
+challenges, the Vandermonde decode (`decodedColumnFamily_of_batch_openings`; `batch_open_soundV` is the
+abstract statement of this recoverability) recovers the individual columns and proves that they open
+the claimed commitments and evaluations.
 
 This closes the witness-to-real-columns half of the constraint-side bridge once the multiopen rewinding has
 produced the relevant batch openings. The separate facts that the deployed quotient check supplies `hquot`

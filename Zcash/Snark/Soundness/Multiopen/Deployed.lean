@@ -423,7 +423,9 @@ evaluation vector `b r` to its own claimed set evaluation `u r` — the Vandermo
 per-column witnesses that (i) open the member commitments, (ii) reconstruct every run's aggregate
 witness, and (iii) transport every run's value equation. The `x₁` counterpart of `batch_open_soundV`,
 which handles the uniform-`b` case (the `x₄` level, where all rewinds share `x₃`); the canonical
-witness is `x1DecodeCols`. -/
+witness is `x1DecodeCols`. Reference form: the live member binding (`deployed_witness_member_binding`
+and its opened mirror) consumes `x1DecodeCols` and its component lemmas directly; this existential
+packages the recoverability fact they instantiate. -/
 theorem x1_batch_open_soundV {m n : ℕ} (g : Fin m → G) (C : Fin n → G)
     (z : Fin n → Fp) (hz : Function.Injective z) (a : Fin n → (Fin m → Fp))
     (b : Fin n → (Fin m → Fp)) (u : Fin n → Fp)

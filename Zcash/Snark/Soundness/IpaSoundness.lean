@@ -229,7 +229,10 @@ theorem batch_open_with_coeffs {m n : ℕ} (g : Fin m → G) (C : Fin n → G) (
   simp only [← Finset.sum_smul, hμ, ite_smul, one_smul, zero_smul, Finset.sum_ite_eq,
     Finset.mem_univ, if_true]
 
-/-- Recover each commitment and value opening from valid batches at distinct challenges. -/
+/-- Recover each commitment and value opening from valid batches at distinct challenges. Reference
+form: the live decode (`decodedColumnFamily_of_batch_openings`, `Soundness.Multiopen.Decode`) needs
+the canonical witness and the reconstruction equations, so it builds them from the shared core
+`batch_open_with_coeffs` directly; this existential states the recoverability fact it instantiates. -/
 theorem batch_open_soundV {m n : ℕ} (g : Fin m → G) (b : Fin m → F) (C : Fin n → G) (e : Fin n → F)
     (z : Fin n → F) (hz : Function.Injective z) (a : Fin n → (Fin m → F))
     (haC : ∀ k, commitGen g (a k) = ∑ j : Fin n, z k ^ (j : ℕ) • C j)
