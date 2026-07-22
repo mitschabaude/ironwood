@@ -4,6 +4,7 @@ import Zcash.Snark.Soundness.AGM.ProbabilityVesta
 import Zcash.Snark.Soundness.Forking.Adversary
 import Zcash.Snark.Soundness.Compose67
 import Zcash.Snark.Soundness.Multiopen.BudgetedExtraction
+import Zcash.Snark.Soundness.VestaBudget
 import Mathlib.Util.AssertNoSorry
 
 /-!
@@ -299,6 +300,27 @@ assert_no_sorry uniformOfFintype_heavy_fiber_lt
 assert_no_sorry deployed_value_check_node_binding_budgeted
 assert_no_sorry deployed_member_node_binding_budgeted
 assert_no_sorry deployed_member_budget
+
+-- The budgeted capstone and computed path (`Soundness.VestaBudget`): the derived deployed member
+-- capstone with the run-quantified floors replaced by the joint accept floor, and the computed-path
+-- endpoint with the member decode constructed and `hquot` derived — no extraction-data hypothesis.
+assert_no_sorry deployed_member_node_binding_at_point_budgeted
+assert_no_sorry orchard_verifier_vesta_member_constraint_budgeted
+assert_no_sorry member_relation_or_dlr_of_instance_budgeted
+assert_no_sorry member_snark_of_instance_budgeted
+assert_no_sorry orchard_verifier_sound_vesta_budgeted
+
+/-- info: 'Zcash.Snark.orchard_verifier_vesta_member_constraint_budgeted' depends on axioms:
+[propext, Classical.choice, Quot.sound,
+CompElliptic.Curves.Pasta.Vesta.p_nsmul_Gpt._native.native_decide.ax_1_1] -/
+#guard_msgs (whitespace := lax) in
+#print axioms orchard_verifier_vesta_member_constraint_budgeted
+
+/-- info: 'Zcash.Snark.orchard_verifier_sound_vesta_budgeted' depends on axioms: [propext,
+Classical.choice, Quot.sound,
+CompElliptic.Curves.Pasta.Vesta.p_nsmul_Gpt._native.native_decide.ax_1_1] -/
+#guard_msgs (whitespace := lax) in
+#print axioms orchard_verifier_sound_vesta_budgeted
 
 /-- info: 'Zcash.Snark.uniformOfFintype_heavy_fiber_lt' depends on axioms: [propext,
 Classical.choice, Quot.sound] -/

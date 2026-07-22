@@ -850,6 +850,60 @@ theorem deployed_member_node_binding_budgeted [DecidableEq G] [Inhabited G] {sha
     (((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i [])[idx])
     ξ hξinj hagg m₀
 
+set_option maxHeartbeats 4000000 in
+/-- The budgeted member node binding at a located set point: `deployed_member_node_binding_budgeted`
+with the point membership supplied instead of a positional index and the `hql` bookkeeping
+discharged (`deployedSetQueries_eval_length`). Each decoded member column takes its claimed
+evaluation at any point of its set — located by `idxOf` — or a nontrivial `(g, U, W)` relation
+exists. The budgeted counterpart of `deployed_member_node_binding_at_point`
+(`Soundness.Multiopen.ValueCheckX3`), same conclusion from the joint accept floor. -/
+theorem deployed_member_node_binding_at_point_budgeted [DecidableEq G] [Inhabited G] {shape : Shape}
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    {a₀ : Fin (2 ^ urs.k) → Fp} {pU pW : Fp}
+    {pbatch : OpenedBatchOpenings urs (evalVector urs.k ch.x3)
+      (x4BatchCommitments urs hk vk ps ch) (x4BatchEvals vk ps ch) a₀ pU pW}
+    (i : ℕ) (hi : i < deployedX4PairCount vk ps ch)
+    (md : OpenedMemberDecode urs hk vk ps ch pbatch i hi)
+    (b₂f : Fp → Fin (2 ^ urs.k) → Fp)
+    (hJ : (((deployedSetQueries vk ps ch i).length - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+        + (((deployedX4PairCount vk ps ch - 1 : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + ((max (2 ^ urs.k) (deployedAllPts vk ps ch).card
+              + (deployedAllPts vk ps ch).card : ℕ) : ℝ≥0∞) / Fintype.card Fp
+          + (deployedX4PairCount vk ps ch : ℝ≥0∞) / Fintype.card Fp)
+      < (PMF.uniformOfFintype (Fp × Fp × Fp × Fp)).toOuterMeasure
+          (memberJointAccept urs hk vk ps ch b₂f))
+    (havoid : ∀ (ξv ζv χv : Fp),
+      OpenedX3Accept urs hk vk
+        ((canonicalX2Run urs hk vk ((canonicalX1Run urs hk vk ps ch ξv).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) (b₂f ξv) ζv).spliced
+          ((canonicalX1Run urs hk vk ps ch ξv).spliced ps))
+        ((canonicalX2Run urs hk vk ((canonicalX1Run urs hk vk ps ch ξv).spliced ps)
+            ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) (b₂f ξv) ζv).challenges
+          ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) ζv)
+        (evalVector urs.k χv) χv →
+      ∀ k', χv ∉ deployedSetPts vk ((canonicalX1Run urs hk vk ps ch ξv).spliced ps)
+        ((canonicalX1Run urs hk vk ps ch ξv).challenges ch ξv) k')
+    {p : Fp} (hpt : p ∈ deployedSetPts vk ps ch i)
+    (m₀ : Fin (deployedSetQueries vk ps ch i).length) :
+    (coeffsToPoly (md.cols m₀)).eval p
+      = ((deployedSetQueries vk ps ch i).getD (m₀ : ℕ) (.point 0, [])).2.getD
+          ((((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i []).idxOf p)) 0
+    ∨ HasNontrivialRelation (F := Fp) urs.g urs.u urs.w := by
+  have hmem : p ∈ (constructIntermediateSets (assembleQueries vk ps ch)).points.getD i [] := by
+    rw [deployedSetPts] at hpt
+    exact List.mem_toFinset.mp hpt
+  have hlt : ((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i []).idxOf p
+      < ((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i []).length :=
+    List.idxOf_lt_length_iff.mpr hmem
+  have hb := deployed_member_node_binding_budgeted urs hk vk ps ch i hi md b₂f hJ havoid
+    (deployedSetQueries_eval_length vk ps ch i) ⟨_, hlt⟩ m₀
+  rcases hb with hb | hdlr
+  · refine Or.inl ?_
+    rwa [show (((constructIntermediateSets (assembleQueries vk ps ch)).points.getD i []))[
+        (⟨_, hlt⟩ : Fin _)] = p from List.getElem_idxOf hlt] at hb
+  · exact Or.inr hdlr
+
 /-- **The combined soundness budget for the deployed member decode.** *Either* the joint accept
 event over the four fresh challenges sits within the knowledge-error budget
 `t₁ + (t₂ + t₃ + t₄)` — the four honest-base squeeze thresholds — *or* every decoded member column
