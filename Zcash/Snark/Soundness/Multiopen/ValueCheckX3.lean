@@ -191,8 +191,9 @@ Composing the rewound aggregate value (steps 2-3) with the binding (step 4): at 
 evaluation, which the inner-`x₂` consistency `hx2cons` (the run's claimed set eval equals the
 `r`-interpolation `lagrangeEval χ points evals`) identifies with the deployed `r`-value — the
 per-χ `hconsistent` for `deployed_aggregate_node_binding_of_x3consistency`, or a `HasNontrivialRelation`.
-The `hx2cons` premise is the innermost fork: it is discharged by the `x₂` set-separation
-(`claimedCombined_of_x2Prob`) at the rewound run — a nested `x₂` accept measure per `x₃`-sample. -/
+The `hx2cons` premise is the innermost fork — the rewound run's claimed set evaluation pinned to
+its interpolation; `hx2cons_slot_eq_multiopenU` identifies the slot and why its discharge is an
+open obligation, with `claimedCombined_of_x2Prob` stating the separation structure it takes. -/
 theorem openedX3_perχ_consistency [DecidableEq G] [Inhabited G] {shape : Shape}
     (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
     (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp) {χ : Fp} (j : ℕ)
@@ -227,9 +228,9 @@ node binding, via `claimedEval_of_x3Prob` at the χ-dependent accept), *or* a no
 relation exists. Classical case split on whether the per-χ consistency holds for every accepting
 `x₃`-rewind: if it does, the `x₃` floor pins the aggregate to the `r`-polynomial; if it fails at some
 `χ`, the per-χ dichotomy there yields the relation. The remaining premises are all genuine forking
-floors — the `x₃` accept measure `hprob`, the nested `x₄` measures `hprob4`, and the inner `x₂`
-consistency `hx2cons` (discharged by `claimedCombined_of_x2Prob` at each rewound run, the innermost
-fork). No `hconsistent` assumed: it is produced here. -/
+floors — the `x₃` accept measure `hprob`, the nested `x₄` measures `hprob4` — plus the inner `x₂`
+consistency `hx2cons` (the innermost fork, an open obligation — see `hx2cons_slot_eq_multiopenU`).
+No `hconsistent` assumed: it is produced here. -/
 theorem deployed_aggregate_node_binding_or_dlr [DecidableEq G] [Inhabited G] {shape : Shape}
     (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
     (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
@@ -292,7 +293,8 @@ theorem hx2cons_slot_eq_multiopenU [DecidableEq G] [Inhabited G] {shape : Shape}
 /-- `multiopenEval` in forward-order power form: reindexing `multiopenEval_powerForm` by set
 reflection, so ascending set index `j` carries `x₂^(len−1−j)` and reads `sets.getD j` directly
 (no `reverse`). The bookkeeping step toward matching the deployed value check against the
-per-set `hsamp` shape of `deployed_setAggregate_node_binding`. -/
+per-set `hsamp` shape `node_binding_of_samples` consumes (instantiated at the deployed grouping by
+`deployed_node_binding_of_grid`). -/
 theorem multiopenEval_powerForm_forward (x2 x3 : Fp) (sets : List (List Fp × List Fp × Fp)) :
     multiopenEval x2 x3 sets
       = ∑ j ∈ Finset.range sets.length,

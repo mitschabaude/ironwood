@@ -35,8 +35,10 @@ The route, mirroring the plain chain step for step:
    the single-squeeze counting floor (`exists_injective_accepting_of_measure`) turns the measure
    into the rewound family. Ranging over `X4Run`s (not the honest `ps`) makes the measure adaptive,
    retiring the fixed-`ps` static-dichotomy caveat.
-5. `opened_constraint_of_opening_or_relation` — the terminal constraint endpoint over the decoded
-   columns, mirroring `decoded_constraint_of_opening_or_relation`.
+5. `opened_constraint_of_relation_and_batch` — the terminal constraint endpoint over the decoded
+   columns at a pinned opening, mirroring the decoded chain; the deployed capstones
+   (`Soundness.Vesta`) consume it with the witness pinned by the fork's extraction or a designated
+   batch, doing the opening-or-relation case split themselves.
 
 The augmented representation is not a detour: the deployed aggregates genuinely carry `u`/`w`
 contributions (the fingerprint MSM has `uScalar`/`wScalar` slots), and the binding story already
@@ -644,48 +646,6 @@ theorem opened_constraint_of_relation_and_batch {urs : URS G} {P : G}
       polynomial := fun i => rfl
       satisfiesCircuit := hsat }
 
-open Polynomial in
-/-- Lift an opening-or-relation terminal capstone to the opened decoded-column constraint endpoint,
-the batch family supplied by `OpenedRewindForRelation` — the opened counterpart of
-`decoded_constraint_of_opening_or_relation`, with the same conditional interface and `hquot`/`hgood`
-scoping. Reduction-shaped: quantifying `hquot ∧ hgood` over every opening is jointly unsatisfiable
-once the commitment kernel is nontrivial (see the scope section of `Soundness.Multiopen.Decode`);
-the live capstones pin the witness instead — the fork's extraction
-(`orchard_verifier_vesta_decoded_constraint_of_forked_x4`) or a designated batch with the
-mismatch-to-DLR split (`orchard_verifier_vesta_forking_constraint_deployed_x4`). -/
-theorem opened_constraint_of_opening_or_relation {urs : URS G} {P : G}
-    {b : Fin (2 ^ urs.k) → Fp} {v : Fp}
-    {numColumns numAdvice numInstance : ℕ}
-    (columnCommitments : Fin numColumns → G) (columnEvals : Fin numColumns → Fp)
-    (adviceIndex : Fin numAdvice → Fin numColumns) (instanceIndex : Fin numInstance → Fin numColumns)
-    (fixedCols : ℕ → Polynomial Fp)
-    (y : Fp) {ng : ℕ} (gates : Fin ng → Expr Fp) (hpoly : Polynomial Fp) (deg : ℕ) (x : Fp)
-    {pU pW : Fp}
-    (hopening : (∃ a, IpaRelation urs P b v a) ∨ HasNontrivialRelation (F := Fp) urs.g urs.u urs.w)
-    (hbatch : OpenedRewindForRelation urs P b v columnCommitments columnEvals pU pW)
-    (hquot : ∀ a (hrel : IpaRelation urs P b v a),
-      quotientCheck
-        (combineGates fixedCols (selectedPolys (openedDecodedCols (hbatch a hrel)) adviceIndex)
-          (selectedPolys (openedDecodedCols (hbatch a hrel)) instanceIndex) y gates) hpoly deg x)
-    (hgood : ∀ a (hrel : IpaRelation urs P b v a),
-      combineGates fixedCols (selectedPolys (openedDecodedCols (hbatch a hrel)) adviceIndex)
-          (selectedPolys (openedDecodedCols (hbatch a hrel)) instanceIndex) y gates
-        ≠ hpoly * (X ^ deg - 1) →
-      (combineGates fixedCols (selectedPolys (openedDecodedCols (hbatch a hrel)) adviceIndex)
-          (selectedPolys (openedDecodedCols (hbatch a hrel)) instanceIndex) y gates
-        - hpoly * (X ^ deg - 1)).eval x ≠ 0)
-    {S : Prop}
-    (hencodes : ∀ a cols,
-      SnarkRelationWithOpenedColumns urs P b v columnCommitments columnEvals adviceIndex
-        instanceIndex fixedCols y gates hpoly deg pU pW a cols → S) :
-    S ∨ HasNontrivialRelation (F := Fp) urs.g urs.u urs.w := by
-  rcases hopening with ⟨a, hrel⟩ | hrel
-  · exact Or.inl (opened_constraint_of_relation_and_batch columnCommitments columnEvals adviceIndex
-      instanceIndex fixedCols y gates hpoly deg x hrel (hbatch a hrel) (hquot a hrel) (hgood a hrel)
-      hencodes)
-  · exact Or.inr hrel
-
-
 /-! ## The opened `x₁` layer: member binding through the declared components -/
 
 /-- The scalar-component Vandermonde decode across `x₁` rewinds — the companion of `x1DecodeCols`
@@ -1151,7 +1111,10 @@ point `x` and its `hgood` are replaced by an accept event `accX` whose uniform m
 vanishing-check budget `max (deg numerator) (deg hpoly + deg) / p`; the good challenge is produced
 at the pinned member decode by `exists_accepting_good_challenge_quotient`
 (`Soundness.GoodChallenge`), so `hgood` is gone from this signature. The measure hypothesis carries
-the random-oracle uniformity axiom (`Soundness.Forking.Oracle`). -/
+the random-oracle uniformity axiom (`Soundness.Forking.Oracle`). No deployed capstone consumes this
+form yet: the derived capstone (`orchard_verifier_vesta_member_constraint_derived`,
+`Soundness.Vesta`) pins the deployed `x` and takes `hgood` there, with `hgood_of_xProb` as its
+production surface — this rung is the endpoint that consumes the `x`-squeeze measure directly. -/
 theorem member_constraint_of_relation_and_batch_xgood [DecidableEq G] [Inhabited G] {shape : Shape}
     (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
     (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
@@ -1217,75 +1180,6 @@ theorem member_constraint_of_relation_and_batch_xgood [DecidableEq G] [Inhabited
     (hquot xg haccX)
     (fun hne => not_mem_szBadSet.mp hxg (sub_ne_zero.mpr hne)) p hadviceLayout hinstanceLayout
     hquotCommitted hencodes
-
-
-open Polynomial in
-set_option maxHeartbeats 1000000 in
-/-- The member-column endpoint with the quotient polynomial *bound*, not free: `hpoly` is the
-decoded member polynomial at a designated position — for the deployed instantiation, the combined
-quotient-piece commitment the verifier queries in the gate-point set (the `hPieces` folded with
-`(xⁿ)`-powers). With it, the relation `hencodes` consumes says the gate numerator over the decoded
-columns equals the *committed* quotient times the vanishing polynomial. -/
-theorem member_constraint_of_relation_and_batch_hbound [DecidableEq G] [Inhabited G]
-    {shape : Shape}
-    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
-    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
-    {P : G} {b : Fin (2 ^ urs.k) → Fp} {v : Fp}
-    {numAdvice numInstance : ℕ}
-    (adviceSet : Fin numAdvice → ℕ)
-    (hadviceSet : ∀ j, adviceSet j < deployedX4PairCount vk ps ch)
-    (adviceMem : ∀ j : Fin numAdvice, Fin (deployedSetQueries vk ps ch (adviceSet j)).length)
-    (instanceSet : Fin numInstance → ℕ)
-    (hinstanceSet : ∀ j, instanceSet j < deployedX4PairCount vk ps ch)
-    (instanceMem : ∀ j : Fin numInstance,
-      Fin (deployedSetQueries vk ps ch (instanceSet j)).length)
-    (hSet : ℕ) (hhSet : hSet < deployedX4PairCount vk ps ch)
-    (hMem : Fin (deployedSetQueries vk ps ch hSet).length)
-    (fixedCols : ℕ → Polynomial Fp) (y : Fp) {ng : ℕ} (gates : Fin ng → Expr Fp)
-    (deg : ℕ) (x : Fp)
-    {pU pW : Fp} {a : Fin (2 ^ urs.k) → Fp}
-    (hrel : IpaRelation urs P b v a)
-    (pbatch : OpenedBatchOpenings urs b (x4BatchCommitments urs hk vk ps ch)
-      (x4BatchEvals vk ps ch) a pU pW)
-    (mdec : ∀ i (hi : i < deployedX4PairCount vk ps ch),
-      OpenedMemberDecode urs hk vk ps ch pbatch i hi)
-    (hquot : quotientCheck
-      (combineGates fixedCols
-        (rotatedFeed vk.omega vk.adviceQueryLayout (fun j : Fin numAdvice =>
-          coeffsToPoly ((mdec (adviceSet j) (hadviceSet j)).cols (adviceMem j))))
-        (rotatedFeed vk.omega vk.instanceQueryLayout (fun j : Fin numInstance =>
-          coeffsToPoly ((mdec (instanceSet j) (hinstanceSet j)).cols (instanceMem j))))
-        y gates) (coeffsToPoly ((mdec hSet hhSet).cols hMem)) deg x)
-    (hgood :
-      combineGates fixedCols
-        (rotatedFeed vk.omega vk.adviceQueryLayout (fun j : Fin numAdvice =>
-          coeffsToPoly ((mdec (adviceSet j) (hadviceSet j)).cols (adviceMem j))))
-        (rotatedFeed vk.omega vk.instanceQueryLayout (fun j : Fin numInstance =>
-          coeffsToPoly ((mdec (instanceSet j) (hinstanceSet j)).cols (instanceMem j))))
-        y gates ≠ (coeffsToPoly ((mdec hSet hhSet).cols hMem)) * (X ^ deg - 1) →
-      (combineGates fixedCols
-        (rotatedFeed vk.omega vk.adviceQueryLayout (fun j : Fin numAdvice =>
-          coeffsToPoly ((mdec (adviceSet j) (hadviceSet j)).cols (adviceMem j))))
-        (rotatedFeed vk.omega vk.instanceQueryLayout (fun j : Fin numInstance =>
-          coeffsToPoly ((mdec (instanceSet j) (hinstanceSet j)).cols (instanceMem j))))
-        y gates - (coeffsToPoly ((mdec hSet hhSet).cols hMem)) * (X ^ deg - 1)).eval x ≠ 0)
-    (p : Fin shape.numProofs)
-    (hadviceLayout : ∀ j : Fin numAdvice,
-      (deployedSetCommIds vk ps ch (adviceSet j)).getD (adviceMem j : ℕ) CommitmentId.vanishingH
-        = CommitmentId.adviceCol p (vk.adviceQueryLayout.getD (j : ℕ) (0, 0)).1)
-    (hinstanceLayout : ∀ j : Fin numInstance,
-      (deployedSetCommIds vk ps ch (instanceSet j)).getD (instanceMem j : ℕ) CommitmentId.vanishingH
-        = CommitmentId.instanceCol p (vk.instanceQueryLayout.getD (j : ℕ) (0, 0)).1)
-    (hquotLayout : (deployedSetCommIds vk ps ch hSet).getD (hMem : ℕ) CommitmentId.randomPoly
-      = CommitmentId.vanishingH)
-    {S : Prop}
-    (hencodes : ∀ a,
-      SnarkRelationWithMemberColumns urs hk vk ps ch P b v p adviceSet hadviceSet adviceMem
-        instanceSet hinstanceSet instanceMem fixedCols y gates (coeffsToPoly ((mdec hSet hhSet).cols hMem)) deg pU pW a → S) :
-    S :=
-  member_constraint_of_relation_and_batch urs hk vk ps ch adviceSet hadviceSet adviceMem
-    instanceSet hinstanceSet instanceMem fixedCols y gates (coeffsToPoly ((mdec hSet hhSet).cols hMem)) deg x hrel pbatch mdec
-    hquot hgood p hadviceLayout hinstanceLayout ⟨hSet, hhSet, hMem, rfl, hquotLayout⟩ hencodes
 
 end Opened
 

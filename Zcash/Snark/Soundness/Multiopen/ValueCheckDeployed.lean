@@ -4,15 +4,17 @@ import Zcash.Snark.Soundness.Multiopen.Deployed
 import Zcash.Snark.Soundness.Multiopen.Opened
 
 /-!
-# Piece 1: instantiating the value-check core at the deployed grouping
+# The deployed grouping data for the value check
 
 `Soundness.Multiopen.ValueCheck` proved the un-batching core over abstract fixed data. This module
-plugs the *deployed* grouping into it: the point sets `deployedSetPts` and their union
-`deployedAllPts` come from `constructIntermediateSets (assembleQueries vk ps ch)`, and each set's
-points sit inside the union (`deployedSetPts_subset`). The decoded aggregate columns and the
-`x₂`/`x₃` sample identities are supplied by the accept bridges (`Soundness.Multiopen.Opened`), so the
-per-set node binding `deployed_setAggregate_node_binding` follows from `node_binding_of_samples` with
-no `hconsistent` assumed — the deployed multiopen value check.
+supplies the *deployed* grouping it is instantiated at: the point sets `deployedSetPts` and their
+union `deployedAllPts` come from `constructIntermediateSets (assembleQueries vk ps ch)`, and each
+set's points sit inside the union (`deployedSetPts_subset`). The instantiation itself is
+`deployed_node_binding_of_grid` (`Soundness.Multiopen.ValueCheckX3`), which feeds
+`node_binding_of_samples` the run openings acceptance actually supplies; `deployedAllPts`'s
+cardinality is also the `x₃` floor threshold of the derived capstone and the floor budget. The
+query-point membership bridge `deployed_query_point_mem` and the member↔aggregate eval bridge
+`member_aggregate_eval_bridge` below are the grouping-side facts that chain consumes.
 -/
 
 namespace Zcash.Snark
@@ -43,34 +45,6 @@ theorem deployedSetPts_subset [DecidableEq G] [Inhabited G] {shape : Shape}
   · exact Finset.subset_biUnion_of_mem _ (Finset.mem_range.mpr hj)
   · rw [deployedSetPts, List.getD_eq_default _ _ hj]
     simp
-
-/-- **The deployed multiopen value check (Piece 1 core).** `node_binding_of_samples` specialized to
-the fingerprinted deployed point sets: given the decoded aggregate columns `col`, their interpolants
-`r`, the quotient columns `qCol`, and the `x₂`/`x₃` sample identities the accept bridges supply
-(`hsamp`), every point `p` of every deployed set `j₀` carries its interpolated claimed evaluation,
-`(col j₀).eval p = (r j₀).eval p` — the value check, with no `hconsistent` assumed. -/
-theorem deployed_setAggregate_node_binding [DecidableEq G] [Inhabited G] {shape : Shape}
-    (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
-    {numSets : ℕ} (col r qCol : Fin numSets → Polynomial Fp)
-    (ζ : Fin numSets → Fp) (hζ : Function.Injective ζ) (d : ℕ)
-    (hdeg : ∀ s : Fin numSets,
-      (qCol s * vanishingProd (deployedAllPts vk ps ch)
-        - ∑ j : Fin numSets, C (ζ s ^ (j : ℕ)) *
-            ((col j - r j) * coProd (deployedAllPts vk ps ch)
-              (deployedSetPts vk ps ch (j : ℕ)))).natDegree ≤ d)
-    (χ : Fin numSets → Fin (d + 1) → Fp) (hχinj : ∀ s, Function.Injective (χ s))
-    (hnode : ∀ (s : Fin numSets) (t : Fin (d + 1)) (j : Fin numSets),
-      (vanishingProd (deployedSetPts vk ps ch (j : ℕ))).eval (χ s t) ≠ 0)
-    (hsamp : ∀ s t, (qCol s).eval (χ s t)
-        = ∑ j : Fin numSets, ζ s ^ (j : ℕ) * (col j - r j).eval (χ s t)
-            * (∏ p ∈ deployedSetPts vk ps ch (j : ℕ), (χ s t - p))⁻¹)
-    (j₀ : Fin numSets) {p : Fp} (hp : p ∈ deployedSetPts vk ps ch (j₀ : ℕ))
-    (hpall : p ∈ deployedAllPts vk ps ch) :
-    (col j₀).eval p = (r j₀).eval p :=
-  node_binding_of_samples (deployedAllPts vk ps ch)
-    (fun j => deployedSetPts vk ps ch (j : ℕ))
-    (fun j => deployedSetPts_subset vk ps ch (j : ℕ)) col r qCol ζ hζ d hdeg χ hχinj hnode hsamp
-    j₀ hp hpall
 
 /-- **F1: the member↔aggregate `x₁` bridge (eval form).** The `x₄`-slot aggregate column for point set
 `i` (`openedDecodedCols` at batch position `count − 1 − i`) evaluated at any `node` is the
