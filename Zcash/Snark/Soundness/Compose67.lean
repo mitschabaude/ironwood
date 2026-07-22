@@ -10,10 +10,24 @@ family (`runToSnark`, bounded by `snarkFailure_prob_le_of_*`); `Soundness.Vesta`
 decoded capstone (`orchard_verifier_vesta_member_constraint_derived`). The two are architecturally
 disjoint — one runs over an adversary-produced `AlgebraicWfProof` at oracle-derived challenges
 `chRecord ν`, the other over a deployed `(vk, ps, ch)` run. This module builds the identification
-bridge #67 needs on the *computed path*: the algebraic instance's clean `Opening` — an `IpaRelation`
-at `commit … aMulti` — is exactly the `IpaRelation` at the deployed opened commitment
+bridge the composition needs on the *computed path*: the algebraic instance's clean `Opening` — an
+`IpaRelation` at `commit … aMulti` — is exactly the `IpaRelation` at the deployed opened commitment
 `deployedCommitment − pU•u − pW•w` the capstone consumes, once `AlgebraicWfProof.multiopen_repr`
-rewrites the commitment and the honest value shift `z⁻¹·vU − ξ·⟨s,b⟩` is discharged.
+rewrites the commitment. The honest value shift `z⁻¹·vU − ξ·⟨s,b⟩` is *derived*, not assumed: on the
+witness-tie branch it is forced to vanish (`shift_eq_zero_of_openings_agree`), and the collision
+branch needs only the commitment identification (`opening_commit_deployed_of_instance`), so the
+composition chain carries no shift hypothesis.
+
+## The extracted `U`/`W` coordinates (`pU`, `pW`)
+
+`pU`/`pW` are outputs, never hypotheses: the AGM representation (`AlgebraicWfProof.multiopen_repr`)
+exposes the adversary's aggregate commitment as `commit(aMulti) + pU•u + pW•w`, so the extracted
+opening is the generalized Pedersen triple `(aMulti, pU, pW)` in the augmented basis `(g, u, w)`.
+The relation is stated at the de-blinded point `deployedCommitment − pU•u − pW•w` because
+`IpaRelation` is the `g`-span opening. `pW` is the Pedersen blinder — nonzero for honest proofs, so
+it can never be forced to `0`. Weight on `u` shifts the opened value by `z⁻¹·vU`; against the
+deployed batch opening of the same point that shift either vanishes or the witnesses collide into a
+computed `(g,u,w)` relation — the dichotomy `member_relation_or_dlr_of_instance` proves.
 -/
 
 namespace Zcash.Snark
@@ -75,9 +89,11 @@ set_option maxHeartbeats 1000000 in
 `deployedAlgebraicInstanceOfCert p ν cert hz hvalid`, with `P` the deployed opened commitment
 `deployedCommitment − multiU•u − multiBlind•w` and `v = multiopenValue`. `hP` is discharged by
 `commit_aMulti_eq_multiopen` (through `deployedCommitment_eq_multiopen`); `hv` is `rfl` (the instance's
-`v` field); `hshift` is the honest-instance condition (`vU = 0` and the `ξ·⟨s,b⟩` term vanishing),
-carried as a premise. This is the exact `IpaRelation` shape `OpenedBatchOpenings.ipaRelation_of_x4Current`
-and the deployed member capstone consume. -/
+`v` field). `hshift` is carried only by this standalone single-opening bridge: the composition derives
+it on the witness tie (`shift_eq_zero_of_openings_agree` / `ipaRelation_deployed_of_openings_agree`)
+and needs only the commitment identification elsewhere, so no downstream theorem carries it. This is
+the exact `IpaRelation` shape `OpenedBatchOpenings.ipaRelation_of_x4Current` and the deployed member
+capstone consume. -/
 theorem ipaRelation_deployed_of_instance
     {vk : VerifyingKey shape Fp VestaG} (p : AlgebraicWfProof basis vk) (ν : Fin 11 → Fp)
     (cert : AlgebraicDForkCert (F := Fp)
@@ -110,20 +126,124 @@ theorem ipaRelation_deployed_of_instance
       exact commit_aMulti_eq_multiopen p ν)
     rfl hshift o
 
+set_option maxHeartbeats 1000000 in
+/-- The extracted opening commits to the de-blinded deployed commitment
+`deployedCommitment − multiU•u − multiBlind•w` — the commitment conjunct of
+`ipaRelation_deployed_of_instance`, available with no value-shift hypothesis. -/
+theorem opening_commit_deployed_of_instance
+    {vk : VerifyingKey shape Fp VestaG} (p : AlgebraicWfProof basis vk) (ν : Fin 11 → Fp)
+    (cert : AlgebraicDForkCert (F := Fp)
+      (augmentedBasis (ursOfAugmentedBasis shape.k basis).g
+        (ursOfAugmentedBasis shape.k basis).u (ursOfAugmentedBasis shape.k basis).w) shape.k)
+    (hz : ν 10 ≠ 0)
+    (hvalid : DeployedForkValid (ursOfAugmentedBasis shape.k basis).g
+      (evalVector shape.k (ν 7)) (ursOfAugmentedBasis shape.k basis).u
+      (ursOfAugmentedBasis shape.k basis).w (ν 10)
+      (commit (ursOfAugmentedBasis shape.k basis)
+          (adjustedWitness (p.aMulti ν) p.s
+            (multiopenValue vk p.proof.1 (chRecord ν (fun _ => 0))) (ν 9)) +
+        (p.multiU ν + ν 9 * p.sU) • (ursOfAugmentedBasis shape.k basis).u +
+        (p.multiBlind ν + ν 9 * p.sBlind) • (ursOfAugmentedBasis shape.k basis).w)
+      cert.toDForkCert)
+    (o : (deployedAlgebraicInstanceOfCert p ν cert hz hvalid).Opening) :
+    commit (ursOfAugmentedBasis shape.k basis) o.1
+      = deployedCommitment (ursOfAugmentedBasis shape.k basis) rfl vk p.proof.1
+            (chRecord ν (fun _ => 0))
+        - p.multiU ν • (ursOfAugmentedBasis shape.k basis).u
+        - p.multiBlind ν • (ursOfAugmentedBasis shape.k basis).w :=
+  o.2.1.trans (by
+    simp only [deployedAlgebraicInstanceOfCert]
+    rw [deployedCommitment_eq_multiopen,
+      show (p.proof.1 : ProofString shape Fp VestaG) = p.algebraicProof.erase from rfl]
+    exact commit_aMulti_eq_multiopen p ν)
+
+set_option maxHeartbeats 1000000 in
+/-- **The honest value shift is forced on the witness tie.** The clean opening opens at
+`multiopenValue + (z⁻¹·vU − ξ·⟨s,b⟩)`; a witness `a₀` of the deployed batch opens the same inner
+product at `multiopenValue`. If the two witnesses agree, the shift `z⁻¹·vU − ξ·⟨s,b⟩` is `0` —
+the condition `ipaRelation_deployed_of_instance` names `hshift`, derived rather than assumed. -/
+theorem shift_eq_zero_of_openings_agree
+    {vk : VerifyingKey shape Fp VestaG} (p : AlgebraicWfProof basis vk) (ν : Fin 11 → Fp)
+    (cert : AlgebraicDForkCert (F := Fp)
+      (augmentedBasis (ursOfAugmentedBasis shape.k basis).g
+        (ursOfAugmentedBasis shape.k basis).u (ursOfAugmentedBasis shape.k basis).w) shape.k)
+    (hz : ν 10 ≠ 0)
+    (hvalid : DeployedForkValid (ursOfAugmentedBasis shape.k basis).g
+      (evalVector shape.k (ν 7)) (ursOfAugmentedBasis shape.k basis).u
+      (ursOfAugmentedBasis shape.k basis).w (ν 10)
+      (commit (ursOfAugmentedBasis shape.k basis)
+          (adjustedWitness (p.aMulti ν) p.s
+            (multiopenValue vk p.proof.1 (chRecord ν (fun _ => 0))) (ν 9)) +
+        (p.multiU ν + ν 9 * p.sU) • (ursOfAugmentedBasis shape.k basis).u +
+        (p.multiBlind ν + ν 9 * p.sBlind) • (ursOfAugmentedBasis shape.k basis).w)
+      cert.toDForkCert)
+    (o : (deployedAlgebraicInstanceOfCert p ν cert hz hvalid).Opening)
+    {a₀ : Fin (2 ^ shape.k) → Fp}
+    (hval₀ : innerProduct a₀ (evalVector shape.k (ν 7))
+      = multiopenValue vk p.proof.1 (chRecord ν (fun _ => 0)))
+    (hae : o.1 = a₀) :
+    (ν 10)⁻¹ * (p.multiU ν + ν 9 * p.sU)
+      - ν 9 * innerProduct p.s (evalVector shape.k (ν 7)) = 0 := by
+  have h := o.2.2
+  rw [hae] at h
+  -- Re-ascribe by definitional unfolding: the instance's projections (`x.b`, `x.v`, …) reduce to
+  -- the `ν`-expressions, aligning the hidden `2 ^ urs.k` index with `2 ^ shape.k` so `rw` matches.
+  have h' : innerProduct a₀ (evalVector shape.k (ν 7))
+      = multiopenValue vk p.proof.1 (chRecord ν (fun _ => 0))
+        + (ν 10)⁻¹ * (p.multiU ν + ν 9 * p.sU)
+        - ν 9 * innerProduct p.s (evalVector shape.k (ν 7)) := h
+  rw [hval₀, add_sub_assoc] at h'
+  exact left_eq_add.mp h'
+
+set_option maxHeartbeats 1000000 in
+/-- `ipaRelation_deployed_of_instance` with `hshift` discharged by
+`shift_eq_zero_of_openings_agree`: on the witness tie the clean opening satisfies the deployed
+`IpaRelation` at `multiopenValue` with no shift hypothesis. -/
+theorem ipaRelation_deployed_of_openings_agree
+    {vk : VerifyingKey shape Fp VestaG} (p : AlgebraicWfProof basis vk) (ν : Fin 11 → Fp)
+    (cert : AlgebraicDForkCert (F := Fp)
+      (augmentedBasis (ursOfAugmentedBasis shape.k basis).g
+        (ursOfAugmentedBasis shape.k basis).u (ursOfAugmentedBasis shape.k basis).w) shape.k)
+    (hz : ν 10 ≠ 0)
+    (hvalid : DeployedForkValid (ursOfAugmentedBasis shape.k basis).g
+      (evalVector shape.k (ν 7)) (ursOfAugmentedBasis shape.k basis).u
+      (ursOfAugmentedBasis shape.k basis).w (ν 10)
+      (commit (ursOfAugmentedBasis shape.k basis)
+          (adjustedWitness (p.aMulti ν) p.s
+            (multiopenValue vk p.proof.1 (chRecord ν (fun _ => 0))) (ν 9)) +
+        (p.multiU ν + ν 9 * p.sU) • (ursOfAugmentedBasis shape.k basis).u +
+        (p.multiBlind ν + ν 9 * p.sBlind) • (ursOfAugmentedBasis shape.k basis).w)
+      cert.toDForkCert)
+    (o : (deployedAlgebraicInstanceOfCert p ν cert hz hvalid).Opening)
+    {a₀ : Fin (2 ^ shape.k) → Fp}
+    (hval₀ : innerProduct a₀ (evalVector shape.k (ν 7))
+      = multiopenValue vk p.proof.1 (chRecord ν (fun _ => 0)))
+    (hae : o.1 = a₀) :
+    IpaRelation (ursOfAugmentedBasis shape.k basis)
+      (deployedCommitment (ursOfAugmentedBasis shape.k basis) rfl vk p.proof.1
+            (chRecord ν (fun _ => 0))
+        - p.multiU ν • (ursOfAugmentedBasis shape.k basis).u
+        - p.multiBlind ν • (ursOfAugmentedBasis shape.k basis).w)
+      (evalVector shape.k (ν 7)) (multiopenValue vk p.proof.1 (chRecord ν (fun _ => 0))) o.1 :=
+  ipaRelation_deployed_of_instance p ν cert hz hvalid
+    (shift_eq_zero_of_openings_agree p ν cert hz hvalid o hval₀ hae) o
+
 open Polynomial in
 open Classical in
 set_option maxHeartbeats 1000000 in
-/-- **G3 witness-tie: the algebraic clean opening feeds the deployed member capstone.** Mirroring the
+/-- **Witness-tie: the algebraic clean opening feeds the deployed member capstone.** Mirroring the
 legacy forking constraint (`orchard_verifier_vesta_forking_constraint_deployed_x4`), the deployed
 batch `pbatch` supplies its own opening `hrel₀` (`ipaRelation_of_x4Current`) at witness `a₀`, and the
-algebraic instance's clean opening `o` supplies a second opening of the *same* commitment
-`deployedCommitment − multiU•u − multiBlind•w` at witness `o.1` (`ipaRelation_deployed_of_instance`).
-Either the two witnesses agree — and `member_constraint_of_relation_and_batch` produces the member
-SNARK relation — or they collide on `commit` with distinct witnesses, yielding a nontrivial `(g,u,w)`
+algebraic instance's clean opening `o` commits to the *same* point
+`deployedCommitment − multiU•u − multiBlind•w` (`opening_commit_deployed_of_instance`). *Either* the
+two witnesses agree — and `member_constraint_of_relation_and_batch` produces the member SNARK
+relation — *or* they collide on `commit` with distinct witnesses, yielding a nontrivial `(g,u,w)`
 relation (`hasNontrivialRelation_of_two_openings`). This ties the deployed batch's witness to the
-#56-extracted witness, so the SNARK relation the capstone concludes is about the extracted opening
-(or binding breaks). The member-capstone gate data (`hquot`/`hgood`/layout/`hquotCommitted`/`mdec`)
-is carried as premises — it is the deployed gate check, produced separately by the F5 machinery. -/
+extracted witness, so the SNARK relation the capstone concludes is about the extracted opening (or
+binding breaks). No shift hypothesis is carried: the agree branch forces it
+(`shift_eq_zero_of_openings_agree`) and the collision branch never reads the opened value. The
+member-capstone gate data (`hquot`/`hgood`/layout/`hquotCommitted`/`mdec`) is carried as premises —
+it is the deployed gate check, produced separately by the derived-terminal machinery. -/
 theorem member_relation_or_dlr_of_instance
     {vk : VerifyingKey shape Fp VestaG} (p : AlgebraicWfProof basis vk) (ν : Fin 11 → Fp)
     (cert : AlgebraicDForkCert (F := Fp)
@@ -139,8 +259,6 @@ theorem member_relation_or_dlr_of_instance
         (p.multiU ν + ν 9 * p.sU) • (ursOfAugmentedBasis shape.k basis).u +
         (p.multiBlind ν + ν 9 * p.sBlind) • (ursOfAugmentedBasis shape.k basis).w)
       cert.toDForkCert)
-    (hshift : (ν 10)⁻¹ * (p.multiU ν + ν 9 * p.sU)
-        - ν 9 * innerProduct p.s (evalVector shape.k (ν 7)) = 0)
     (o : (deployedAlgebraicInstanceOfCert p ν cert hz hvalid).Opening)
     {a₀ : Fin (2 ^ shape.k) → Fp}
     (pbatch : OpenedBatchOpenings (ursOfAugmentedBasis shape.k basis) (evalVector shape.k (ν 7))
@@ -214,14 +332,14 @@ theorem member_relation_or_dlr_of_instance
     S ∨ HasNontrivialRelation (F := Fp) (ursOfAugmentedBasis shape.k basis).g
       (ursOfAugmentedBasis shape.k basis).u (ursOfAugmentedBasis shape.k basis).w := by
   have hrel₀ := pbatch.ipaRelation_of_x4Current hξcur
-  have hrel' := ipaRelation_deployed_of_instance p ν cert hz hvalid hshift o
+  have hcomm := opening_commit_deployed_of_instance p ν cert hz hvalid o
   by_cases hae : o.1 = a₀
   · exact Or.inl (member_constraint_of_relation_and_batch (ursOfAugmentedBasis shape.k basis) rfl
       vk p.proof.1 (chRecord ν (fun _ => 0)) adviceSet hadviceSet adviceMem instanceSet hinstanceSet
       instanceMem fixedCols y gates hpoly deg xpt hrel₀ pbatch mdec hquot hgood pp hadviceLayout
       hinstanceLayout hquotCommitted hencodes)
   · exact Or.inr (hasNontrivialRelation_of_two_openings (ursOfAugmentedBasis shape.k basis) hae
-      (hrel'.1.trans hrel₀.1.symm))
+      (hcomm.trans hrel₀.1.symm))
 
 open Polynomial in
 open Classical in
@@ -250,8 +368,6 @@ noncomputable def member_snark_of_instance
         (p.multiU ν + ν 9 * p.sU) • (ursOfAugmentedBasis shape.k basis).u +
         (p.multiBlind ν + ν 9 * p.sBlind) • (ursOfAugmentedBasis shape.k basis).w)
       cert.toDForkCert)
-    (hshift : (ν 10)⁻¹ * (p.multiU ν + ν 9 * p.sU)
-        - ν 9 * innerProduct p.s (evalVector shape.k (ν 7)) = 0)
     {a₀ : Fin (2 ^ shape.k) → Fp}
     (pbatch : OpenedBatchOpenings (ursOfAugmentedBasis shape.k basis) (evalVector shape.k (ν 7))
       (x4BatchCommitments (ursOfAugmentedBasis shape.k basis) rfl vk p.proof.1
@@ -326,7 +442,7 @@ noncomputable def member_snark_of_instance
       ⊕' AlgebraicRelationWitness (F := Fp) basis :=
   match (deployedAlgebraicInstanceOfCert p ν cert hz hvalid).run with
   | PSum.inl o =>
-      PSum.inl (member_relation_or_dlr_of_instance p ν cert hz hvalid hshift o pbatch hξcur
+      PSum.inl (member_relation_or_dlr_of_instance p ν cert hz hvalid o pbatch hξcur
         adviceSet hadviceSet adviceMem instanceSet hinstanceSet instanceMem fixedCols y gates
         hpoly deg xpt mdec hquot hgood pp hadviceLayout hinstanceLayout hquotCommitted hencodes)
   | PSum.inr rel => PSum.inr rel
@@ -388,8 +504,6 @@ noncomputable def orchard_verifier_sound_vesta_computed
         (p.multiU ν + ν 9 * p.sU) • (ursOfAugmentedBasis shape.k basis).u +
         (p.multiBlind ν + ν 9 * p.sBlind) • (ursOfAugmentedBasis shape.k basis).w)
       cert.toDForkCert)
-    (hshift : (ν 10)⁻¹ * (p.multiU ν + ν 9 * p.sU)
-        - ν 9 * innerProduct p.s (evalVector shape.k (ν 7)) = 0)
     {a₀ : Fin (2 ^ shape.k) → Fp}
     (pbatch : OpenedBatchOpenings (ursOfAugmentedBasis shape.k basis) (evalVector shape.k (ν 7))
       (x4BatchCommitments (ursOfAugmentedBasis shape.k basis) rfl vk p.proof.1
@@ -472,7 +586,7 @@ noncomputable def orchard_verifier_sound_vesta_computed
     (S ∨ HasNontrivialRelation (F := Fp) (ursOfAugmentedBasis shape.k basis).g
         (ursOfAugmentedBasis shape.k basis).u (ursOfAugmentedBasis shape.k basis).w)
       ⊕' AlgebraicRelationWitness (F := Fp) basis :=
-  member_snark_of_instance p ν cert hz hvalid hshift pbatch hξcur adviceSet hadviceSet adviceMem
+  member_snark_of_instance p ν cert hz hvalid pbatch hξcur adviceSet hadviceSet adviceMem
     instanceSet hinstanceSet instanceMem fixedCols y gates hpoly deg xpt mdec hquot hgood pp
     hadviceLayout hinstanceLayout hquotCommitted
     (S := S)
