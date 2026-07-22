@@ -243,24 +243,22 @@ def NontrivialRelation.ofUnopenedFork [DecidableEq G] [Inhabited G] {shape : Sha
   NontrivialRelation.ofDeployedTree hz urs.g b fs.openedCommitment
     (multiopenValue vk ps ch) blind fs.tree fs.accepts hne
 
-/-- **Deployed opening, given a clean fork.** From a forked transcript whose projection is
-cleanly accepted, `ipa_soundV` extracts the opening witness for the declared opening
-`fs.openedCommitment` — the blinded opening of the pinned commitment,
-`deployedCommitment = ⟨a, g⟩ + [pU]u + [pW]w` with `⟨a, b⟩ = multiopenValue`; the circuit side
-(`hcirc`) and VK-correctness (`hencodes`) conclude `S`. The opening witness `a` and the `IpaRelation`
-certificate `hrel` are supplied by the caller (derived from the clean accept via
-`ipaRelation_of_acceptV`). -/
+/-- Derive `S` from a clean fork, an all-openings circuit premise, and `hencodes`. -/
 theorem orchard_verifier_deployed_opening_of_forked [DecidableEq G] [Inhabited G] {shape : Shape}
     (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
     (ch : Challenges shape.k Fp) {b : Fin (2 ^ urs.k) → Fp} {z blind : Fp}
-    (a : Fin (2 ^ urs.k) → Fp) {circuitSat : (Fin (2 ^ urs.k) → Fp) → Prop}
+    {circuitSat : (Fin (2 ^ urs.k) → Fp) → Prop}
     (fs : ForkedTranscript urs hk vk ps ch b z blind)
-    (hrel : IpaRelation urs fs.openedCommitment b (multiopenValue vk ps ch) a)
-    (hcirc : circuitSat a)
+    (hclean : IpaAcceptV urs.g b fs.openedCommitment (multiopenValue vk ps ch)
+      (projTree fs.tree))
+    (hcirc : ∀ a, IpaRelation urs fs.openedCommitment b (multiopenValue vk ps ch) a →
+      circuitSat a)
     {S : Prop} (hencodes : ∀ a, SnarkRelation urs fs.openedCommitment b
       (multiopenValue vk ps ch) circuitSat a → S) :
-    S :=
-  hencodes a ⟨hrel, hcirc⟩
+    S := by
+  obtain ⟨a, hrel⟩ := ipaRelation_of_acceptV urs b fs.openedCommitment
+    (multiopenValue vk ps ch) (projTree fs.tree) hclean
+  exact hencodes a ⟨hrel, hcirc a hrel⟩
 
 /-! ## `circuitSat` is derived from the verifier's gate check + Schwartz–Zippel
 
@@ -269,32 +267,31 @@ challenge avoids the Schwartz–Zippel bad set.
 -/
 
 open Polynomial in
-/-- **Deployed opening and constraint, given a clean fork.** As
-`orchard_verifier_deployed_opening_of_forked`, with the circuit side derived too: `circuitSat` —
-instantiated to `circuitSatViaGates` — from the verifier's gate point-check `hquot` at the
-challenge `x`, lifted to the polynomial identity by Schwartz–Zippel (`hgood`), via
-`circuitSatViaGates_of_check`. `hquot`/`hgood` now constrain the single extracted witness `a` — lifted to the constraint
-identity by Schwartz–Zippel. The multiopen decode (`batch_open_soundV`), binding
-`decodeAdvice`/`decodeInstance` to the committed columns, is still open. -/
+/-- Add the gate-check conclusion to `orchard_verifier_deployed_opening_of_forked`. -/
 theorem orchard_verifier_deployed_constraint_of_forked [DecidableEq G] [Inhabited G] {shape : Shape}
     (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
     (ch : Challenges shape.k Fp) {b : Fin (2 ^ urs.k) → Fp} {z blind : Fp}
     (fixedCols : ℕ → Polynomial Fp)
     (decodeAdvice decodeInstance : (Fin (2 ^ urs.k) → Fp) → (ℕ → Polynomial Fp))
     (y : Fp) {ng : ℕ} (gates : Fin ng → Expr Fp) (hpoly : Polynomial Fp) (deg : ℕ) (x : Fp)
-    (a : Fin (2 ^ urs.k) → Fp)
     (fs : ForkedTranscript urs hk vk ps ch b z blind)
-    (hrel : IpaRelation urs fs.openedCommitment b (multiopenValue vk ps ch) a)
-    (hquot : quotientCheck (combineGates fixedCols (decodeAdvice a) (decodeInstance a) y gates) hpoly deg x)
-    (hgood : combineGates fixedCols (decodeAdvice a) (decodeInstance a) y gates ≠ hpoly * (X ^ deg - 1) →
+    (hclean : IpaAcceptV urs.g b fs.openedCommitment (multiopenValue vk ps ch)
+      (projTree fs.tree))
+    (hquot : ∀ a, IpaRelation urs fs.openedCommitment b (multiopenValue vk ps ch) a →
+      quotientCheck (combineGates fixedCols (decodeAdvice a) (decodeInstance a) y gates) hpoly deg x)
+    (hgood : ∀ a, IpaRelation urs fs.openedCommitment b (multiopenValue vk ps ch) a →
+      combineGates fixedCols (decodeAdvice a) (decodeInstance a) y gates ≠ hpoly * (X ^ deg - 1) →
       (combineGates fixedCols (decodeAdvice a) (decodeInstance a) y gates
         - hpoly * (X ^ deg - 1)).eval x ≠ 0)
     {S : Prop}
     (hencodes : ∀ a, SnarkRelation urs fs.openedCommitment b (multiopenValue vk ps ch)
       (circuitSatViaGates fixedCols decodeAdvice decodeInstance y gates hpoly deg) a → S) :
     S := by
+  obtain ⟨a, hrel⟩ := ipaRelation_of_acceptV urs b fs.openedCommitment
+    (multiopenValue vk ps ch) (projTree fs.tree) hclean
   have hsat : circuitSatViaGates fixedCols decodeAdvice decodeInstance y gates hpoly deg a :=
-    circuitSatViaGates_of_check fixedCols decodeAdvice decodeInstance y gates hpoly deg a x hquot hgood
+    circuitSatViaGates_of_check fixedCols decodeAdvice decodeInstance y gates hpoly deg a x
+      (hquot a hrel) (hgood a hrel)
   exact hencodes a ⟨hrel, hsat⟩
 
 end Zcash.Snark
