@@ -2,6 +2,7 @@ import Zcash.Snark.Soundness.AGM.BindingSignature
 import Zcash.Snark.Soundness.AGM.Capstone
 import Zcash.Snark.Soundness.AGM.ProbabilityVesta
 import Zcash.Snark.Soundness.Forking.Adversary
+import Zcash.Snark.Soundness.Compose67
 import Mathlib.Util.AssertNoSorry
 
 /-!
@@ -258,6 +259,31 @@ assert_no_sorry orchard_deployed_relation_event_prob_le_of_textbookDL
 assert_no_sorry orchard_deployed_relation_prob_eq_of_uniformURS
 assert_no_sorry orchard_deployed_relation_prob_le_of_uniformURS_textbookDL
 assert_no_sorry orchard_deployed_relation_prob_le_of_generatorRO_textbookDL
+
+-- The multiopen value-check chain (issue #18): the deployed value check derived from the nested
+-- forking floors, the x₁ member un-batch on top of it, and the terminal with `hadvice`/`hinstance`
+-- produced rather than assumed (`Soundness.Multiopen.ValueCheckX3`, `Soundness.Vesta`).
+assert_no_sorry deployed_value_check_node_binding
+assert_no_sorry deployed_member_node_binding
+assert_no_sorry orchard_verifier_vesta_member_constraint_derived
+
+-- Issue #67 (compose forking extraction with the decoded capstones; retire
+-- `ExtractableFromAcceptance`): the algebraic clean opening identified with the deployed
+-- capstone's shape (`ipaRelation_deployed_of_instance`), the witness-tie composition
+-- (`member_snark_of_instance`), and the computed-path soundness endpoint
+-- (`orchard_verifier_sound_vesta_computed`) that concludes the plain `SnarkRelation` with NO
+-- `ExtractableFromAcceptance` hypothesis. G4 (`snarkExtraction_prob_le_of_generatorRO_textbookDL`)
+-- is the CONDITIONAL knowledge-error bound: the SNARK-extraction failure is contained in the #56
+-- clean-opening failure and inherits its `(Q+k)·3/|Fp| + (Q+1)/|Fp| + |basis|·ε` bound, conditional
+-- on `hExtract` (clean opening ⟹ extraction). Removing `hExtract` = the deployed-floor ↔ AGM-family
+-- reconciliation (no failure-probability bound exists over the deployed accept measures), still open.
+assert_no_sorry ipaRelation_deployed_of_instance
+assert_no_sorry member_snark_of_instance
+assert_no_sorry snarkRelation_of_memberColumns
+assert_no_sorry orchard_verifier_sound_vesta_computed
+assert_no_sorry snarkExtraction_prob_le_of_generatorRO_textbookDL
+assert_no_sorry instanceAttempt_provenance
+assert_no_sorry snarkExtraction_prob_le_of_generatorRO_textbookDL
 
 /-- info: 'Zcash.Snark.relation_prob_le_of_textbookDL' depends on axioms: [propext, Classical.choice, Quot.sound] -/
 #guard_msgs (whitespace := lax) in

@@ -9,12 +9,12 @@
     },
     "agmStack": {
       "label": "PR #28 code head",
-      "ref": "580a49a7ad3ed4ec5d9fc0e5e3a9316369be55f3",
+      "ref": "c78e4f2704a14408149b5bdf52d71aab95cf2fc4",
       "fetch": "pull/28/head"
     },
     "fsStack": {
       "label": "PR #56 FS-to-AGM handoff",
-      "ref": "ef8d8fdc9526720f583eb46597cbdf6d2ea3a076",
+      "ref": "e628e19d59ffc4fceca3ff83130c7a9fbf142326",
       "fetch": "pull/56/head"
     }
   },
@@ -44,7 +44,7 @@
       "label": "PR #28",
       "title": "AGM binding reduction",
       "url": "https://github.com/zcash/ironwood/pull/28",
-      "sha": "580a49a",
+      "sha": "c78e4f2",
       "lane": "stack"
     },
     "30": {
@@ -65,7 +65,7 @@
       "label": "PR #56",
       "title": "Fully adaptive Fiat-Shamir adversary",
       "url": "https://github.com/zcash/ironwood/pull/56",
-      "sha": "ef8d8fd",
+      "sha": "456c386",
       "lane": "stack"
     },
     "27": {
