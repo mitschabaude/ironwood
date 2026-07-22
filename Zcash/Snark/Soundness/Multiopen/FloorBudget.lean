@@ -270,4 +270,77 @@ theorem combined_floor_failure_le
     ext w
     simp only [reindexX4, Equiv.coe_fn_mk, Set.mem_setOf_eq]
 
+/-- **The deployed four-squeeze floor-failure budget (option-(b), stage 3).** The abstract
+`combined_floor_failure_le` instantiated at the deployed multiopen accept predicates
+`OpenedX{1,2,3,4}Accept`, with each squeeze's base threaded from the earlier sampled challenges by
+the adversary's rewind-run strategy `g₁`/`g₂`/`g₃` (the run each sampled challenge determines, via
+`Soundness.Forking.reprogramX*`) and the `x₂` blinder `b₂`. Over the joint uniform draw of the four
+fresh challenges `w = (x₁, x₂, x₃, x₄)`, the probability that *any* deployed squeeze floor fails —
+squeeze `i` accepts at its fresh slot yet the accept-measure at the `g`-determined base sits at or
+below its threshold `tᵢ` — is at most `t₁ + t₂ + t₃ + t₄`.
+
+The four failure sets are the exact negations of the deployed terminal's `hprob1`/`hx2`/`hprob3`/
+`hprob4` floors (`Soundness.Vesta.orchard_verifier_vesta_member_constraint_derived`) at the
+sampled runs:
+* `x₁` at the honest base `(ps, ch)` — its floor is base-independent;
+* `x₂` at `(g₁ ξ).spliced ps` / `(g₁ ξ).challenges ch ξ` with blinder `b₂ ξ`;
+* `x₃` at the `x₂`-rewound base, blinder `evalVector urs.k χ` seeded by the fresh `x₃` slot;
+* `x₄` at the `x₃`-rewound base, blinder `evalVector urs.k χ` seeded by the `x₃` challenge (the
+  third coordinate), the fresh slot being the `x₄` challenge (the fourth coordinate).
+
+This is a direct application of `combined_floor_failure_le`: the deployed predicates slot into its
+abstract `acc₁…acc₄` with the base-threading and blinder-routing lining up definitionally, so the
+budget arithmetic is inherited unchanged. The thresholds are left abstract (`t₁…t₄`); the deployed
+`hprob*` thresholds (`deployedX4PairCount`/`deployedSetQueries`/`deployedAllPts` at the *sampled*
+bases) depend on the run, so relating them to base-independent constants is the residual the terminal
+rewiring (stage 4) supplies — it does not affect the union arithmetic settled here. -/
+theorem deployed_combined_floor_failure_le [DecidableEq G] [Inhabited G] {shape : Shape}
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (g₁ : Fp → X1Run shape G) (g₂ : Fp → Fp → X2Run shape G) (g₃ : Fp → Fp → Fp → X3Run shape G)
+    (b₂ : Fp → Fin (2 ^ urs.k) → Fp) (t₁ t₂ t₃ t₄ : ℝ≥0∞) :
+    (PMF.uniformOfFintype (Fp × Fp × Fp × Fp)).toOuterMeasure
+        ({w : Fp × Fp × Fp × Fp | OpenedX1Accept urs hk vk ps ch w.1 ∧
+            ¬ (t₁ < (PMF.uniformOfFintype Fp).toOuterMeasure
+                    (Finset.univ.filter (OpenedX1Accept urs hk vk ps ch)))}
+          ∪ {w : Fp × Fp × Fp × Fp |
+              OpenedX2Accept urs hk vk ((g₁ w.1).spliced ps) ((g₁ w.1).challenges ch w.1)
+                  (b₂ w.1) w.2.1 ∧
+            ¬ (t₂ < (PMF.uniformOfFintype Fp).toOuterMeasure
+                    (Finset.univ.filter (OpenedX2Accept urs hk vk ((g₁ w.1).spliced ps)
+                      ((g₁ w.1).challenges ch w.1) (b₂ w.1))))}
+          ∪ {w : Fp × Fp × Fp × Fp |
+              OpenedX3Accept urs hk vk ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps))
+                  ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1)
+                  (evalVector urs.k w.2.2.1) w.2.2.1 ∧
+            ¬ (t₃ < (PMF.uniformOfFintype Fp).toOuterMeasure
+                    (Finset.univ.filter (fun χv => OpenedX3Accept urs hk vk
+                      ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps))
+                      ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1)
+                      (evalVector urs.k χv) χv)))}
+          ∪ {w : Fp × Fp × Fp × Fp |
+              OpenedX4Accept urs hk vk
+                  ((g₃ w.1 w.2.1 w.2.2.1).spliced ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps)))
+                  ((g₃ w.1 w.2.1 w.2.2.1).challenges
+                    ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1) w.2.2.1)
+                  (evalVector urs.k w.2.2.1) w.2.2.2 ∧
+            ¬ (t₄ < (PMF.uniformOfFintype Fp).toOuterMeasure
+                    (Finset.univ.filter (OpenedX4Accept urs hk vk
+                      ((g₃ w.1 w.2.1 w.2.2.1).spliced
+                        ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps)))
+                      ((g₃ w.1 w.2.1 w.2.2.1).challenges
+                        ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1) w.2.2.1)
+                      (evalVector urs.k w.2.2.1))))})
+      ≤ t₁ + t₂ + t₃ + t₄ :=
+  combined_floor_failure_le
+    (OpenedX1Accept urs hk vk ps ch)
+    (fun ξ ζ => OpenedX2Accept urs hk vk ((g₁ ξ).spliced ps) ((g₁ ξ).challenges ch ξ) (b₂ ξ) ζ)
+    (fun ξ ζ χ => OpenedX3Accept urs hk vk ((g₂ ξ ζ).spliced ((g₁ ξ).spliced ps))
+        ((g₂ ξ ζ).challenges ((g₁ ξ).challenges ch ξ) ζ) (evalVector urs.k χ) χ)
+    (fun ξ ζ χ ω => OpenedX4Accept urs hk vk
+        ((g₃ ξ ζ χ).spliced ((g₂ ξ ζ).spliced ((g₁ ξ).spliced ps)))
+        ((g₃ ξ ζ χ).challenges ((g₂ ξ ζ).challenges ((g₁ ξ).challenges ch ξ) ζ) χ)
+        (evalVector urs.k χ) ω)
+    t₁ t₂ t₃ t₄
+
 end Zcash.Snark
