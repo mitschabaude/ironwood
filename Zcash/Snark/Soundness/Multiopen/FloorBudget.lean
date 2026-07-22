@@ -434,4 +434,81 @@ theorem deployed_singlepath_floor_of_good [DecidableEq G] [Inhabited G] {shape :
     not_not] at hw
   exact ⟨hw.1.1.1, hw.1.1.2, hw.1.2, hw.2⟩
 
+/-! ## The heavy-fiber descent primitives (budgeted forking)
+
+The budgeted extraction (`Soundness.Multiopen.BudgetedExtraction`) replaces the `∀`-over-runs floor
+premises with a single *joint* accept floor `Σtᵢ < μ(J)` over the nested challenge draw and descends
+one squeeze at a time: a Markov (heavy-row) split peels the current squeeze's threshold off the
+joint floor, leaving the remaining floor on every heavy fiber. These are the two counting facts that
+descent consumes at each level. -/
+
+/-- A set of nonzero uniform measure is nonempty — the self-anchoring fact that replaces the
+per-squeeze anchor premises (`hξ₀`/`hζ₀`/`hx3anchor`) in the budgeted descent: each level's heavy
+set has measure above its (nonnegative) threshold, so it is nonempty and anchors its own fork. -/
+theorem nonempty_of_uniformOfFintype_toOuterMeasure_ne_zero {α : Type*} [Fintype α] [Nonempty α]
+    {S : Set α} (h : (PMF.uniformOfFintype α).toOuterMeasure S ≠ 0) : S.Nonempty := by
+  by_contra hne
+  rw [Set.not_nonempty_iff_eq_empty] at hne
+  rw [hne] at h
+  exact h (by rw [uniformOfFintype_toOuterMeasure_set]; simp)
+
+/-- The uniform measure of a satisfaction set equals that of its `Finset` filter — the bridge from
+the descent's set-of heavy events to the `Finset.filter` shape `exists_injective_accepting_of_measure`
+consumes. -/
+theorem uniformOfFintype_toOuterMeasure_setOf_filter {α : Type*} [Fintype α] [Nonempty α]
+    (p : α → Prop) [DecidablePred p] :
+    (PMF.uniformOfFintype α).toOuterMeasure {a : α | p a}
+      = (PMF.uniformOfFintype α).toOuterMeasure (Finset.univ.filter p : Finset α) := by
+  congr 1
+  ext a
+  simp
+
+open Classical in
+/-- **The heavy-fiber Markov bound — the budgeted-forking descent primitive.** If the joint accept
+event `A` over a uniform product beats `t + T`, then the *heavy* first coordinates — those whose
+fiber measure beats `T` — have measure above `t`. Splitting the current squeeze's threshold `t` off
+the joint floor leaves the residual floor `T` intact on every heavy fiber, which is exactly the
+recursion shape of the budgeted extraction: fork the heavy set (measure `> t` gives the sample
+family), then descend into each sampled fiber (measure `> T`).
+
+Counting proof: `A` is covered by the light part (fibers of measure `≤ T`, product measure `≤ T` by
+the Fubini fiber bound) and the heavy cylinder (product measure `= μ(heavy) · 1`), so
+`t + T < μ(A) ≤ μ(heavy) + T`; cancel `T` (finite). -/
+theorem uniformOfFintype_heavy_fiber_lt {α β : Type*} [Fintype α] [Nonempty α] [Fintype β]
+    [Nonempty β] (A : Set (α × β)) {t T : ℝ≥0∞} (hT : T ≠ ⊤)
+    (hA : t + T < (PMF.uniformOfFintype (α × β)).toOuterMeasure A) :
+    t < (PMF.uniformOfFintype α).toOuterMeasure
+        {a : α | T < (PMF.uniformOfFintype β).toOuterMeasure {b : β | (a, b) ∈ A}} := by
+  set H : Set α :=
+    {a : α | T < (PMF.uniformOfFintype β).toOuterMeasure {b : β | (a, b) ∈ A}} with hH
+  have hlight : (PMF.uniformOfFintype (α × β)).toOuterMeasure
+      {x : α × β | x.2 ∈ (if x.1 ∈ H then (∅ : Set β) else {b : β | (x.1, b) ∈ A})} ≤ T := by
+    refine uniformOfFintype_prod_fiber_bound_right
+      (fun a => if a ∈ H then (∅ : Set β) else {b : β | (a, b) ∈ A}) (fun a => ?_)
+    beta_reduce
+    by_cases ha : a ∈ H
+    · simp [ha]
+    · rw [if_neg ha]
+      exact not_lt.mp (by simpa [hH] using ha)
+  have hsub : A ⊆ {x : α × β | x.2 ∈ (if x.1 ∈ H then (∅ : Set β) else {b : β | (x.1, b) ∈ A})}
+      ∪ (H ×ˢ (Set.univ : Set β)) := by
+    intro x hx
+    by_cases hxa : x.1 ∈ H
+    · exact Or.inr ⟨hxa, trivial⟩
+    · exact Or.inl (by simp only [Set.mem_setOf_eq, if_neg hxa]; exact hx)
+  have hcyl : (PMF.uniformOfFintype (α × β)).toOuterMeasure (H ×ˢ (Set.univ : Set β))
+      = (PMF.uniformOfFintype α).toOuterMeasure H := by
+    rw [uniformOfFintype_toOuterMeasure_prod, uniformOfFintype_toOuterMeasure_univ, mul_one]
+  have hchain : t + T < (PMF.uniformOfFintype α).toOuterMeasure H + T := by
+    calc t + T
+        < (PMF.uniformOfFintype (α × β)).toOuterMeasure A := hA
+      _ ≤ (PMF.uniformOfFintype (α × β)).toOuterMeasure
+            {x : α × β | x.2 ∈ (if x.1 ∈ H then (∅ : Set β) else {b : β | (x.1, b) ∈ A})}
+          + (PMF.uniformOfFintype (α × β)).toOuterMeasure (H ×ˢ (Set.univ : Set β)) :=
+          le_trans ((PMF.uniformOfFintype (α × β)).toOuterMeasure.mono hsub)
+            (MeasureTheory.measure_union_le _ _)
+      _ ≤ T + (PMF.uniformOfFintype α).toOuterMeasure H := add_le_add hlight (le_of_eq hcyl)
+      _ = (PMF.uniformOfFintype α).toOuterMeasure H + T := add_comm _ _
+  exact (ENNReal.add_lt_add_iff_right hT).mp hchain
+
 end Zcash.Snark
