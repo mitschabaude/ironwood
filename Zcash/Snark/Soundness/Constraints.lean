@@ -93,6 +93,76 @@ polynomials at `x`. `Expr.toPoly` lifts a gate to the corresponding univariate p
 value is a polynomial evaluation — the `numerator` of `quotientCheck` — connecting
 `quotientCheck_sound` to the actual Orchard gates. -/
 
+
+/-- The Schwartz–Zippel bad set of a use site: the roots of the difference polynomial `C`. A
+challenge is *good* for `C` when it avoids this set — for `C = 0` (the identity holds as
+polynomials) nothing is excluded, and otherwise exactly the `≤ natDegree C` roots are. -/
+noncomputable def szBadSet (C : Polynomial Fp) : Finset Fp := C.roots.toFinset
+
+/-- Membership in the bad set: `x` is bad for `C` exactly when the identity fails (`C ≠ 0`) and `x`
+fails to witness it (`C.eval x = 0`). -/
+theorem mem_szBadSet {C : Polynomial Fp} {x : Fp} :
+    x ∈ szBadSet C ↔ C ≠ 0 ∧ C.eval x = 0 := by
+  simp [szBadSet, Polynomial.mem_roots']
+
+/-- **The good-challenge condition, derived from bad-set avoidance.** `x ∉ szBadSet C` is exactly
+the `hgood` shape the constraint layer consumes: if the identity fails as polynomials, the
+challenge evaluation does not vanish. -/
+theorem not_mem_szBadSet {C : Polynomial Fp} {x : Fp} :
+    x ∉ szBadSet C ↔ (C ≠ 0 → C.eval x ≠ 0) := by
+  rw [mem_szBadSet, not_and]
+
+/-- **Root counting: the bad set is small.** One Schwartz–Zippel use site over `F_p` excludes at
+most `natDegree C` challenges — the `d` of the `d / p` budget (`uniformChallenge_szBadSet` in
+`Zcash.Snark.Soundness.GoodChallenge`). -/
+theorem szBadSet_card_le (C : Polynomial Fp) : (szBadSet C).card ≤ C.natDegree :=
+  le_trans (Multiset.toFinset_card_le _) (Polynomial.card_roots' C)
+
+/-- The concrete degree bound at the vanishing-check site: the bad set of the constraint difference
+`numerator − h · (Xⁿ − 1)` has at most `max (deg numerator) (deg h + n)` elements — the explicit
+`d` for the quotient identity's Schwartz–Zippel use. -/
+theorem szBadSet_quotient_card_le (numerator h : Polynomial Fp) (n : ℕ) :
+    (szBadSet (numerator - h * (X ^ n - 1))).card
+      ≤ max numerator.natDegree (h.natDegree + n) := by
+  refine (szBadSet_card_le _).trans ((Polynomial.natDegree_sub_le _ _).trans ?_)
+  refine max_le_max le_rfl (Polynomial.natDegree_mul_le.trans (Nat.add_le_add_left ?_ _))
+  exact (Polynomial.natDegree_sub_le _ _).trans (by simp)
+
+/-- When the identity fails, the accepting challenges are exactly the bad set: the verifier's check
+passes at `x` iff `x` is a root of the constraint difference. This is the set `quotientCheck_sound`
+counts and `Zcash.Snark.Soundness.GoodChallenge` measures. -/
+theorem quotientCheck_filter_eq_szBadSet (numerator h : Polynomial Fp) (n : ℕ)
+    (hne : numerator ≠ h * (X ^ n - 1)) :
+    (univ.filter fun x => quotientCheck numerator h n x)
+      = szBadSet (numerator - h * (X ^ n - 1)) := by
+  ext x
+  simp only [mem_filter, mem_univ, true_and, mem_szBadSet, sub_ne_zero, quotientCheck,
+    eval_sub, eval_mul, eval_pow, eval_X, eval_one, sub_eq_zero]
+  exact ⟨fun hx => ⟨hne, hx⟩, fun hx => hx.2⟩
+
+/-! ## Rotated column polynomials
+
+halo2 opens a query `(column, rotation)` at the rotated point `rotate_omega x rot = ω^rot · x`
+(`plonk/verifier.rs`), and its gate evaluator reads the claimed evaluation there. Feeding the
+verifier's gate check the *rotated* column polynomial `col.comp (C (ω^rot) · X)` reproduces exactly
+that: its value at the gate point `x` is `col (ω^rot · x)` — the claimed evaluation the query binds.
+The degree is unchanged (the rotation is an invertible rescaling of `X`), so the Schwartz–Zippel
+degree bounds for the quotient check carry over. -/
+
+/-- Rotating the argument by an invertible factor `w`: `(col ∘ (w·X))(x) = col (w·x)`. So the rotated
+column, evaluated at the gate point `x`, is the column's value at the rotated point `ω^rot · x`. -/
+theorem eval_comp_rotate (col : Polynomial Fp) (w x : Fp) :
+    (col.comp (Polynomial.C w * Polynomial.X)).eval x = col.eval (w * x) := by
+  rw [Polynomial.eval_comp]; simp
+
+/-- Rotation by a nonzero factor preserves degree (it rescales `X`), so the quotient-check degree
+bounds are unchanged by feeding rotated columns. -/
+theorem natDegree_comp_rotate (col : Polynomial Fp) {w : Fp} (hw : w ≠ 0) :
+    (col.comp (Polynomial.C w * Polynomial.X)).natDegree = col.natDegree := by
+  have hq : (Polynomial.C w * Polynomial.X).natDegree = 1 := by
+    rw [Polynomial.natDegree_C_mul hw, Polynomial.natDegree_X]
+  rw [Polynomial.natDegree_comp, hq, mul_one]
+
 /-- Lift a gate `Expr` to a univariate polynomial, replacing each query with its column polynomial. -/
 noncomputable def Expr.toPoly (fixedCols adviceCols instanceCols : ℕ → Polynomial Fp) :
     Expr Fp → Polynomial Fp
@@ -153,5 +223,30 @@ theorem eval_combineGates {n : ℕ} (fixedCols adviceCols instanceCols : ℕ →
       = ((gatePolys fixedCols adviceCols instanceCols gates).map (fun p => p.eval x)).foldl
           (fun acc v => acc * y + v) 0 := by
   simp [combineGates, eval_foldByY]
+
+/-- **Gate transport (in-Lean).** If the fed columns evaluate at `x` to the claimed values
+(`hfixed`/`hadvice`/`hinstance` — the node binding, once `rotatedFeed`'s `ω^rot` is folded in) and the
+`y`-fold of the gates over those claimed values is the committed quotient's contribution
+`hpoly(x)·(xⁿ − 1)` (`hfold` — halo2's `expectedHEval` identity), then the verifier's quotient check
+holds. This is the step that turns the multiopen value check's node binding into `hquot`; nothing here
+is a trust surface — `hfold` is definitional in `expectedHEval` once the gate structure is the
+deployed one. -/
+theorem quotientCheck_of_claimed {ng : ℕ}
+    (fixedCols adviceCols instanceCols : ℕ → Polynomial Fp) (y : Fp) (gates : Fin ng → Expr Fp)
+    (hpoly : Polynomial Fp) (deg : ℕ) (x : Fp)
+    (fixedClaimed adviceClaimed instanceClaimed : ℕ → Fp)
+    (hfixed : ∀ i, (fixedCols i).eval x = fixedClaimed i)
+    (hadvice : ∀ i, (adviceCols i).eval x = adviceClaimed i)
+    (hinstance : ∀ i, (instanceCols i).eval x = instanceClaimed i)
+    (hfold : (List.ofFn (fun i : Fin ng =>
+        (gates i).eval fixedClaimed adviceClaimed instanceClaimed)).foldl
+          (fun acc v => acc * y + v) 0 = hpoly.eval x * (x ^ deg - 1)) :
+    quotientCheck (combineGates fixedCols adviceCols instanceCols y gates) hpoly deg x := by
+  have hf : (fun k => (fixedCols k).eval x) = fixedClaimed := funext hfixed
+  have ha : (fun k => (adviceCols k).eval x) = adviceClaimed := funext hadvice
+  have hi : (fun k => (instanceCols k).eval x) = instanceClaimed := funext hinstance
+  rw [quotientCheck, eval_combineGates]
+  simp only [gatePolys, List.map_ofFn, Function.comp_def, Expr.eval_toPoly, hf, ha, hi]
+  exact hfold
 
 end Zcash.Snark
