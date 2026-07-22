@@ -294,43 +294,53 @@ budget arithmetic is inherited unchanged. The thresholds are left abstract (`t�
 `hprob*` thresholds (`deployedX4PairCount`/`deployedSetQueries`/`deployedAllPts` at the *sampled*
 bases) depend on the run, so relating them to base-independent constants is the residual the terminal
 rewiring (stage 4) supplies — it does not affect the union arithmetic settled here. -/
+def deployedFloorFailureSet [DecidableEq G] [Inhabited G] {shape : Shape}
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (g₁ : Fp → X1Run shape G) (g₂ : Fp → Fp → X2Run shape G) (g₃ : Fp → Fp → Fp → X3Run shape G)
+    (b₂ : Fp → Fin (2 ^ urs.k) → Fp) (t₁ t₂ t₃ t₄ : ℝ≥0∞) : Set (Fp × Fp × Fp × Fp) :=
+  {w : Fp × Fp × Fp × Fp | OpenedX1Accept urs hk vk ps ch w.1 ∧
+      ¬ (t₁ < (PMF.uniformOfFintype Fp).toOuterMeasure
+              (Finset.univ.filter (OpenedX1Accept urs hk vk ps ch)))}
+    ∪ {w : Fp × Fp × Fp × Fp |
+        OpenedX2Accept urs hk vk ((g₁ w.1).spliced ps) ((g₁ w.1).challenges ch w.1)
+            (b₂ w.1) w.2.1 ∧
+      ¬ (t₂ < (PMF.uniformOfFintype Fp).toOuterMeasure
+              (Finset.univ.filter (OpenedX2Accept urs hk vk ((g₁ w.1).spliced ps)
+                ((g₁ w.1).challenges ch w.1) (b₂ w.1))))}
+    ∪ {w : Fp × Fp × Fp × Fp |
+        OpenedX3Accept urs hk vk ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps))
+            ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1)
+            (evalVector urs.k w.2.2.1) w.2.2.1 ∧
+      ¬ (t₃ < (PMF.uniformOfFintype Fp).toOuterMeasure
+              (Finset.univ.filter (fun χv => OpenedX3Accept urs hk vk
+                ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps))
+                ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1)
+                (evalVector urs.k χv) χv)))}
+    ∪ {w : Fp × Fp × Fp × Fp |
+        OpenedX4Accept urs hk vk
+            ((g₃ w.1 w.2.1 w.2.2.1).spliced ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps)))
+            ((g₃ w.1 w.2.1 w.2.2.1).challenges
+              ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1) w.2.2.1)
+            (evalVector urs.k w.2.2.1) w.2.2.2 ∧
+      ¬ (t₄ < (PMF.uniformOfFintype Fp).toOuterMeasure
+              (Finset.univ.filter (OpenedX4Accept urs hk vk
+                ((g₃ w.1 w.2.1 w.2.2.1).spliced
+                  ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps)))
+                ((g₃ w.1 w.2.1 w.2.2.1).challenges
+                  ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1) w.2.2.1)
+                (evalVector urs.k w.2.2.1))))}
+
+/-- **The deployed four-squeeze floor-failure budget (stage 3a).** `combined_floor_failure_le` read
+off `deployedFloorFailureSet`: over the joint uniform draw of the four fresh challenges, the deployed
+floor-failure event has probability at most `t₁ + t₂ + t₃ + t₄`. -/
 theorem deployed_combined_floor_failure_le [DecidableEq G] [Inhabited G] {shape : Shape}
     (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
     (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
     (g₁ : Fp → X1Run shape G) (g₂ : Fp → Fp → X2Run shape G) (g₃ : Fp → Fp → Fp → X3Run shape G)
     (b₂ : Fp → Fin (2 ^ urs.k) → Fp) (t₁ t₂ t₃ t₄ : ℝ≥0∞) :
     (PMF.uniformOfFintype (Fp × Fp × Fp × Fp)).toOuterMeasure
-        ({w : Fp × Fp × Fp × Fp | OpenedX1Accept urs hk vk ps ch w.1 ∧
-            ¬ (t₁ < (PMF.uniformOfFintype Fp).toOuterMeasure
-                    (Finset.univ.filter (OpenedX1Accept urs hk vk ps ch)))}
-          ∪ {w : Fp × Fp × Fp × Fp |
-              OpenedX2Accept urs hk vk ((g₁ w.1).spliced ps) ((g₁ w.1).challenges ch w.1)
-                  (b₂ w.1) w.2.1 ∧
-            ¬ (t₂ < (PMF.uniformOfFintype Fp).toOuterMeasure
-                    (Finset.univ.filter (OpenedX2Accept urs hk vk ((g₁ w.1).spliced ps)
-                      ((g₁ w.1).challenges ch w.1) (b₂ w.1))))}
-          ∪ {w : Fp × Fp × Fp × Fp |
-              OpenedX3Accept urs hk vk ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps))
-                  ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1)
-                  (evalVector urs.k w.2.2.1) w.2.2.1 ∧
-            ¬ (t₃ < (PMF.uniformOfFintype Fp).toOuterMeasure
-                    (Finset.univ.filter (fun χv => OpenedX3Accept urs hk vk
-                      ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps))
-                      ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1)
-                      (evalVector urs.k χv) χv)))}
-          ∪ {w : Fp × Fp × Fp × Fp |
-              OpenedX4Accept urs hk vk
-                  ((g₃ w.1 w.2.1 w.2.2.1).spliced ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps)))
-                  ((g₃ w.1 w.2.1 w.2.2.1).challenges
-                    ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1) w.2.2.1)
-                  (evalVector urs.k w.2.2.1) w.2.2.2 ∧
-            ¬ (t₄ < (PMF.uniformOfFintype Fp).toOuterMeasure
-                    (Finset.univ.filter (OpenedX4Accept urs hk vk
-                      ((g₃ w.1 w.2.1 w.2.2.1).spliced
-                        ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps)))
-                      ((g₃ w.1 w.2.1 w.2.2.1).challenges
-                        ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1) w.2.2.1)
-                      (evalVector urs.k w.2.2.1))))})
+        (deployedFloorFailureSet urs hk vk ps ch g₁ g₂ g₃ b₂ t₁ t₂ t₃ t₄)
       ≤ t₁ + t₂ + t₃ + t₄ :=
   combined_floor_failure_le
     (OpenedX1Accept urs hk vk ps ch)
@@ -342,5 +352,37 @@ theorem deployed_combined_floor_failure_le [DecidableEq G] [Inhabited G] {shape 
         ((g₃ ξ ζ χ).challenges ((g₂ ξ ζ).challenges ((g₁ ξ).challenges ch ξ) ζ) χ)
         (evalVector urs.k χ) ω)
     t₁ t₂ t₃ t₄
+
+/-- **The deployed floors hold except on the budget (stage 3b).** Complement of
+`deployed_combined_floor_failure_le`: the challenge tuples on which *every* deployed squeeze floor is
+satisfied — the "good" event `deployedFloorFailureSetᶜ`, on which each accepting sampled run's floor
+`tᵢ < measure(accept)` holds — have probability at least `1 - (t₁ + t₂ + t₃ + t₄)`.
+
+Pure outer-measure arithmetic: `S ∪ Sᶜ = univ` has measure `1`
+(`uniformOfFintype_toOuterMeasure_univ`), subadditivity (`measure_union_le`) gives
+`1 ≤ μ S + μ Sᶜ`, hence `μ Sᶜ ≥ 1 - μ S ≥ 1 - (t₁+t₂+t₃+t₄)` by the stage-3a bound. This is the form
+the terminal rewiring (stage 4) consumes: on the good event, the derived terminal's `hprob*` floor
+premises hold at the `g`-determined runs, so the extraction succeeds off a set of measure at most the
+budget. -/
+theorem deployed_combined_floor_holds [DecidableEq G] [Inhabited G] {shape : Shape}
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (g₁ : Fp → X1Run shape G) (g₂ : Fp → Fp → X2Run shape G) (g₃ : Fp → Fp → Fp → X3Run shape G)
+    (b₂ : Fp → Fin (2 ^ urs.k) → Fp) (t₁ t₂ t₃ t₄ : ℝ≥0∞) :
+    1 - (t₁ + t₂ + t₃ + t₄) ≤
+      (PMF.uniformOfFintype (Fp × Fp × Fp × Fp)).toOuterMeasure
+        (deployedFloorFailureSet urs hk vk ps ch g₁ g₂ g₃ b₂ t₁ t₂ t₃ t₄)ᶜ := by
+  set μ := (PMF.uniformOfFintype (Fp × Fp × Fp × Fp)).toOuterMeasure with hμ
+  set S := deployedFloorFailureSet urs hk vk ps ch g₁ g₂ g₃ b₂ t₁ t₂ t₃ t₄ with hS
+  have hfail : μ S ≤ t₁ + t₂ + t₃ + t₄ :=
+    deployed_combined_floor_failure_le urs hk vk ps ch g₁ g₂ g₃ b₂ t₁ t₂ t₃ t₄
+  have hsub : (1 : ℝ≥0∞) ≤ μ S + μ Sᶜ := by
+    calc (1 : ℝ≥0∞) = μ (Set.univ : Set (Fp × Fp × Fp × Fp)) :=
+          (uniformOfFintype_toOuterMeasure_univ).symm
+      _ = μ (S ∪ Sᶜ) := by rw [Set.union_compl_self]
+      _ ≤ μ S + μ Sᶜ := MeasureTheory.measure_union_le _ _
+  have hgood : (1 : ℝ≥0∞) - μ S ≤ μ Sᶜ := by
+    rw [tsub_le_iff_right, add_comm]; exact hsub
+  exact le_trans (tsub_le_tsub_left hfail 1) hgood
 
 end Zcash.Snark
