@@ -24,12 +24,12 @@ where `J` is the nested accept event along the *canonical* rewind path. Two devi
   the next level. The heavy sets have positive measure, so every level self-anchors — the anchor
   premises (`hξ₀`/`hζ₀`/`hx3anchor`) of the `∀`-over-runs cores disappear.
 
-The endpoint `deployed_member_budget` states the audit's combined soundness budget: for the
-deployed member decode, *either* the joint accept measure sits within the knowledge-error budget
-`Σtᵢ`, *or* the decoded member columns take their claimed evaluations (or a computed
-`(g, U, W)`-relation exists). The `∀`-over-runs cores remain in place — this module builds
-alongside them; the non-measure premises (`havoid`, `hql`, the member decode) are unchanged except
-that `havoid` is only required at the canonical runs.
+The endpoint `deployed_member_budget` is the combined soundness budget: for the deployed member
+decode, *either* the joint accept measure sits within the knowledge-error budget `Σtᵢ`, *or* the
+decoded member columns take their claimed evaluations (or a computed `(g, U, W)`-relation exists).
+The `∀`-over-runs cores remain in place — this module builds alongside them; the non-measure
+premises (`havoid`, `hql`, the member decode) are unchanged except that `havoid` is only required
+at the canonical runs.
 -/
 
 namespace Zcash.Snark

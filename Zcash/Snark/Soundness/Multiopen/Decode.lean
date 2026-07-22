@@ -198,11 +198,15 @@ forking-floor accept measures (the RO-uniformity axiom, as everywhere in this de
 (iii) `hfold` at the deployed claimed evaluations — the gate-structure fingerprint surface
 (zcash/ironwood#11/#13); (iv) `hgood`, whose production from the deployed `x`-squeeze measure is the
 proven `hgood_of_xProb`; (v) the layout identities (`hadviceLayout`/…, statement-side selections tying
-the fed members to the VK query layout); and (vi) sample-avoidance/range bookkeeping floors. The
-acceptance-to-extraction composition — producing `pbatch` from a bare accepting run, the single
-knowledge-error budget, and retiring the declared `pU`/`pW` components — is the *next* issue's scope
-(zcash/ironwood#67, which composes #56's "accepting ⟹ clean opening" with this "opening ⟹ columns ⊨
-gates"), not #18's.
+the fed members to the VK query layout); and (vi) sample-avoidance/range bookkeeping floors. Of the
+acceptance-to-extraction composition (zcash/ironwood#67, which composes "accepting ⟹ clean opening"
+with this "opening ⟹ columns ⊨ gates"): the single knowledge-error budget is proven — the member
+extraction from one joint accept floor at the four honest-base thresholds
+(`Soundness.Multiopen.BudgetedExtraction.deployed_member_budget`) — and the declared `pU`/`pW`
+components are identified as representation *outputs* of the clean opening rather than premises,
+with the witness-tie value shift derived (`Soundness.Compose67.shift_eq_zero_of_openings_agree`).
+Producing `pbatch`/the member decode from a bare accepting run and coupling the algebraic family's
+coin measure to the multiopen budget remain that composition's open surfaces.
 
 **Delegated to the equivalence fingerprint.** Per the principle raised in zcash/ironwood#21 (the
 `PermutationConstruction.lean:243` review thread, comment `r3493240277`: supply the Rust-produced

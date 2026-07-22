@@ -2,7 +2,7 @@ import Zcash.Snark.Soundness.Multiopen.Opened
 import Zcash.Snark.Soundness.Forking.Probability
 
 /-!
-# Multiopen floor-failure budget (option-(b), stage 1)
+# Multiopen floor-failure budget
 
 The deployed multiopen value check (`Soundness.Multiopen.ValueCheckX3`, `Soundness.Vesta`) consumes
 forking-floor premises `hprob*` of the shape `threshold < measure(accept over the fresh Fp
@@ -11,13 +11,14 @@ verifier's accept fraction over the single fresh uniform `Fp` challenge that squ
 (`Soundness.Forking.reprogramX{1,2,3,4}`, `Soundness.Forking.Rewind`); the honest run witnesses it,
 and `exists_injective_accepting_of_measure` turns it into the rewind samples the extraction spends.
 
-This module bounds the *failure* of each floor. Over that single fresh slot, the event "the
-deployed run accepts yet the accept-measure sits at or below the threshold" — the negation of the
-floor — has probability `≤ threshold` (`squeeze_floor_failure_le`, the failure-side complement of
-the counting floor). Specialised to the deployed x₄ predicate this is `openedX4_floor_failure_le`,
-the template the other three squeezes reuse verbatim. These per-squeeze failure bounds are the
-building blocks of the combined soundness budget (their nested `Fubini` union removes the floor
-hypotheses from the computed soundness endpoint).
+This module prices the *failure* of the floors. Over a single fresh slot, the event "the deployed
+run accepts yet the accept-measure sits at or below the threshold" — the negation of the floor —
+has probability `≤ threshold` (`squeeze_floor_failure_le`); `openedX4_floor_failure_le` is the
+deployed x₄ instantiation, and the other squeezes reuse the template verbatim. The nested union
+(`combined_floor_failure_le`, `deployed_combined_floor_failure_le`) prices all four floors at once
+at `t₁ + t₂ + t₃ + t₄`, and the heavy-fiber descent primitives at the end of the module are what
+the budgeted extraction (`Soundness.Multiopen.BudgetedExtraction`) spends to consume that budget
+with no `∀`-over-runs floor hypotheses.
 -/
 
 namespace Zcash.Snark
@@ -233,10 +234,9 @@ fresh challenge to the fiber's first coordinate and the earlier challenges to th
 `reindexX{2,3,4}`), and the four events union additively with no cross term (`measure_union_le`
 iterated). This is the combined soundness budget in the sampled-run model: the extraction fails only
 inside this event, so the computed-path knowledge error is at most `t₁ + t₂ + t₃ + t₄` plus the AGM
-commitment-binding term. Wiring the deployed terminal's `hprob*` floors to instantiate `accᵢ` at
-`OpenedX{1,2,3,4}Accept` and the earlier-challenge-determined bases (the `reprogramX*`
-run-determination) is the remaining plumbing; the budget arithmetic and its composition are settled
-here. -/
+commitment-binding term. `deployed_combined_floor_failure_le` below instantiates `accᵢ` at
+`OpenedX{1,2,3,4}Accept` with the earlier-challenge-determined bases, and the budgeted extraction
+(`Soundness.Multiopen.BudgetedExtraction`) consumes the budget without floor hypotheses. -/
 theorem combined_floor_failure_le
     (acc₁ : Fp → Prop) (acc₂ : Fp → Fp → Prop)
     (acc₃ : Fp → Fp → Fp → Prop) (acc₄ : Fp → Fp → Fp → Fp → Prop)
@@ -270,7 +270,7 @@ theorem combined_floor_failure_le
     ext w
     simp only [reindexX4, Equiv.coe_fn_mk, Set.mem_setOf_eq]
 
-/-- **The deployed four-squeeze floor-failure budget (option-(b), stage 3).** The abstract
+/-- **The deployed four-squeeze floor-failure event.** The abstract
 `combined_floor_failure_le` instantiated at the deployed multiopen accept predicates
 `OpenedX{1,2,3,4}Accept`, with each squeeze's base threaded from the earlier sampled challenges by
 the adversary's rewind-run strategy `g₁`/`g₂`/`g₃` (the run each sampled challenge determines, via
@@ -290,10 +290,10 @@ sampled runs:
 
 This is a direct application of `combined_floor_failure_le`: the deployed predicates slot into its
 abstract `acc₁…acc₄` with the base-threading and blinder-routing lining up definitionally, so the
-budget arithmetic is inherited unchanged. The thresholds are left abstract (`t₁…t₄`); the deployed
+budget arithmetic is inherited unchanged. The thresholds are left abstract (`t₁…t₄`): the deployed
 `hprob*` thresholds (`deployedX4PairCount`/`deployedSetQueries`/`deployedAllPts` at the *sampled*
-bases) depend on the run, so relating them to base-independent constants is the residual the terminal
-rewiring (stage 4) supplies — it does not affect the union arithmetic settled here. -/
+bases) name the run, and the splice-invariance lemmas (`x1Run_pairCount`/`x1Run_allPts` and their
+`x₂`/`x₃`/`x₄` siblings) equate them to the honest-base constants where they are consumed. -/
 def deployedFloorFailureSet [DecidableEq G] [Inhabited G] {shape : Shape}
     (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
     (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
@@ -331,7 +331,7 @@ def deployedFloorFailureSet [DecidableEq G] [Inhabited G] {shape : Shape}
                   ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1) w.2.2.1)
                 (evalVector urs.k w.2.2.1))))}
 
-/-- **The deployed four-squeeze floor-failure budget (stage 3a).** `combined_floor_failure_le` read
+/-- **The deployed four-squeeze floor-failure budget.** `combined_floor_failure_le` read
 off `deployedFloorFailureSet`: over the joint uniform draw of the four fresh challenges, the deployed
 floor-failure event has probability at most `t₁ + t₂ + t₃ + t₄`. -/
 theorem deployed_combined_floor_failure_le [DecidableEq G] [Inhabited G] {shape : Shape}
@@ -353,17 +353,18 @@ theorem deployed_combined_floor_failure_le [DecidableEq G] [Inhabited G] {shape 
         (evalVector urs.k χ) ω)
     t₁ t₂ t₃ t₄
 
-/-- **The deployed floors hold except on the budget (stage 3b).** Complement of
+/-- **The deployed floors hold except on the budget.** Complement of
 `deployed_combined_floor_failure_le`: the challenge tuples on which *every* deployed squeeze floor is
 satisfied — the "good" event `deployedFloorFailureSetᶜ`, on which each accepting sampled run's floor
 `tᵢ < measure(accept)` holds — have probability at least `1 - (t₁ + t₂ + t₃ + t₄)`.
 
 Pure outer-measure arithmetic: `S ∪ Sᶜ = univ` has measure `1`
 (`uniformOfFintype_toOuterMeasure_univ`), subadditivity (`measure_union_le`) gives
-`1 ≤ μ S + μ Sᶜ`, hence `μ Sᶜ ≥ 1 - μ S ≥ 1 - (t₁+t₂+t₃+t₄)` by the stage-3a bound. This is the form
-the terminal rewiring (stage 4) consumes: on the good event, the derived terminal's `hprob*` floor
-premises hold at the `g`-determined runs, so the extraction succeeds off a set of measure at most the
-budget. -/
+`1 ≤ μ S + μ Sᶜ`, hence `μ Sᶜ ≥ 1 - μ S ≥ 1 - (t₁+t₂+t₃+t₄)` by the failure bound. On the good
+event the derived terminal's `hprob*` floor premises hold at the `g`-determined runs
+(`deployed_singlepath_floor_of_good` below); the budgeted extraction
+(`Soundness.Multiopen.BudgetedExtraction`) consumes the same budget through the joint accept floor
+directly. -/
 theorem deployed_combined_floor_holds [DecidableEq G] [Inhabited G] {shape : Shape}
     (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
     (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
@@ -385,17 +386,14 @@ theorem deployed_combined_floor_holds [DecidableEq G] [Inhabited G] {shape : Sha
     rw [tsub_le_iff_right, add_comm]; exact hsub
   exact le_trans (tsub_le_tsub_left hfail 1) hgood
 
-/-- **Budget → single-path floors (stage 4b bridge).** On the good event
-`deployedFloorFailureSetᶜ` each level's squeeze floor holds *conditioned on that level's sampled
-accept*: if the sampled run at level `i` accepts, its accept-measure at the `g`-determined base
-exceeds the threshold `tᵢ`. This is the per-level de Morgan reading of `w ∉ deployedFloorFailureSet`
-(`¬(accᵢ ∧ ¬floorᵢ) = accᵢ → floorᵢ`), and it is exactly the four *single-run* floor facts a
-single-path member terminal would consume in place of the current derived terminal's ∀-over-runs
-`hx2`/`hprob3`/`hprob4`. Combined with `deployed_combined_floor_holds` (`μ(good) ≥ 1 − Σtᵢ`), this
-localises the residual: the only piece still missing for the unconditional deployed budget is a
-single-path member terminal — one whose floor premises are these `g`-determined single-run floors
-rather than universally quantified over the splice runs `X1Run`/`X2Run`/`X3Run` (which the nested
-extraction core `deployed_member_node_binding` currently quantifies over). -/
+/-- Budget → single-path floors. On the good event `deployedFloorFailureSetᶜ` each level's squeeze
+floor holds *conditioned on that level's sampled accept*: if the sampled run at level `i` accepts,
+its accept-measure at the `g`-determined base exceeds the threshold `tᵢ` — the per-level de Morgan
+reading of `w ∉ deployedFloorFailureSet` (`¬(accᵢ ∧ ¬floorᵢ) = accᵢ → floorᵢ`). The single-path
+member terminal consuming floors of this run-pinned shape is
+`deployed_member_node_binding_budgeted` (`Soundness.Multiopen.BudgetedExtraction`), which takes
+them as one joint accept floor along the canonical rewind path rather than through this good-event
+decomposition. -/
 theorem deployed_singlepath_floor_of_good [DecidableEq G] [Inhabited G] {shape : Shape}
     (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
     (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
