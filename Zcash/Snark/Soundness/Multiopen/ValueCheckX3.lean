@@ -1325,6 +1325,58 @@ theorem x1Run_setPts [DecidableEq G] [Inhabited G] {shape : Shape}
     deployedSetPts vk (r.spliced ps) (r.challenges ch ξ) k = deployedSetPts vk ps ch k := by
   simp only [deployedSetPts, x1Run_assembleQueries]
 
+/-! ### `deployedAllPts` splice-invariance (option-(b) stage 4a)
+
+The union of all deployed point sets — whose cardinality is the `x₃` (`hprob3`) threshold in the
+derived terminal — is built entirely from `constructIntermediateSets (assembleQueries vk ps ch)`
+(`deployedAllPts`/`deployedSetPts`, `ValueCheckDeployed`), so it inherits the `assembleQueries`
+seal (`x{1,2,3,4}Run_assembleQueries`, `Deployed`) verbatim: the rewound base's point union — hence
+its cardinality — is the honest one. Together with `x{1,2,3,4}Run_pairCount`/`_setQueries` (already
+in `Deployed`), this shows *every* deployed threshold is a splice-invariant structural constant, the
+enabling fact for reading the run-indexed floors off the base-independent budget. -/
+
+/-- The deployed point-set union is shared across `x₁` rewinds. -/
+theorem x1Run_allPts [DecidableEq G] [Inhabited G] {shape : Shape}
+    (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (r : X1Run shape G) (ξ : Fp) :
+    deployedAllPts vk (r.spliced ps) (r.challenges ch ξ) = deployedAllPts vk ps ch := by
+  simp only [deployedAllPts, deployedSetPts, x1Run_assembleQueries]
+
+/-- The deployed point-set union is shared across `x₂` rewinds. -/
+theorem x2Run_allPts [DecidableEq G] [Inhabited G] {shape : Shape}
+    (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (r : X2Run shape G) (ζ : Fp) :
+    deployedAllPts vk (r.spliced ps) (r.challenges ch ζ) = deployedAllPts vk ps ch := by
+  simp only [deployedAllPts, deployedSetPts, x2Run_assembleQueries]
+
+/-- The deployed point-set union is shared across `x₃` rewinds. -/
+theorem x3Run_allPts [DecidableEq G] [Inhabited G] {shape : Shape}
+    (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (r : X3Run shape G) (χ : Fp) :
+    deployedAllPts vk (r.spliced ps) (r.challenges ch χ) = deployedAllPts vk ps ch := by
+  simp only [deployedAllPts, deployedSetPts, x3Run_assembleQueries]
+
+/-- The deployed point-set union is shared across `x₄` rewinds. -/
+theorem x4Run_allPts [DecidableEq G] [Inhabited G] {shape : Shape}
+    (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (r : X4Run shape G) (ω : Fp) :
+    deployedAllPts vk (r.spliced ps) (r.challenges ch ω) = deployedAllPts vk ps ch := by
+  simp only [deployedAllPts, deployedSetPts, x4Run_assembleQueries]
+
+/-- The deployed point-union cardinality (the `hprob3` threshold ingredient) is `x₁`-invariant. -/
+theorem x1Run_allPts_card [DecidableEq G] [Inhabited G] {shape : Shape}
+    (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (r : X1Run shape G) (ξ : Fp) :
+    (deployedAllPts vk (r.spliced ps) (r.challenges ch ξ)).card = (deployedAllPts vk ps ch).card :=
+  congrArg Finset.card (x1Run_allPts vk ps ch r ξ)
+
+/-- The deployed point-union cardinality is `x₂`-invariant. -/
+theorem x2Run_allPts_card [DecidableEq G] [Inhabited G] {shape : Shape}
+    (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (r : X2Run shape G) (ζ : Fp) :
+    (deployedAllPts vk (r.spliced ps) (r.challenges ch ζ)).card = (deployedAllPts vk ps ch).card :=
+  congrArg Finset.card (x2Run_allPts vk ps ch r ζ)
+
 /-- **The `x₁`-rewound value-check set at `k`: honest points, `ξ`-compressed member evals (F2 stage
 A).** At an `x₁`-rewound base the grouping is the honest one (`x1Run_assembleQueries`) and only the
 compression challenge moves (`(r.challenges ch ξ).x1 = ξ`), so set `k`'s point list is the honest
