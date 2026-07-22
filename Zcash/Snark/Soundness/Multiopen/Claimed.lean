@@ -24,7 +24,7 @@ claimed evaluation (`col_eval_node_eq_claimed`). This module produces those samp
   (`Soundness.Forking.Rewind`, sealed by `Soundness.Forking.Ordering`). This is the value-side twin
   of the `x₄` opened chain (`Soundness.Multiopen.Opened`), consuming the same rewinding floor.
 
-* `gateGood_of_x3Bound_of_xProb` — **the gate `x`→`x₃` transport, grounded.** Once the decoded
+* `gateGood_of_xProb` — **the gate `x`→`x₃` transport, grounded.** Once the decoded
   columns' claimed evaluations are pinned by the binding above, the gate-check difference polynomial
   `C` is a fixed function of the committed data. An accept measure over the deployed `x`-squeeze
   events beating `natDegree C / p` then produces a good gate-check challenge outside `szBadSet C`
@@ -75,8 +75,10 @@ from the claimed data, hence self-consistent — `deployed_verification_eq`), no
 binding for the deployed value check is instead the `x₃`-rewind: the quotient column `q′_col` is fixed
 across `x₃`-rewinds (`q′` absorbed before `x₃`) and satisfies `q′_col.eval x₃ = multiopenEval x₂ x₃ sets`
 (`Opened.openedDecodedCols_top_eval_x3`), so it is *that* rewind that pins the per-set consistency after
-denominator clearing. This lemma captures the set-separation *structure* but is not, on its own, the
-end-to-end derivation of `hconsistent`; that composition is the terminal-capstone work (zcash/ironwood#18). -/
+denominator clearing. This lemma captures the set-separation *structure*; the end-to-end derivation of
+`hconsistent` is the landed fixed-`q′` composition — `deployed_value_check_node_binding` /
+`deployed_member_node_binding` (`Soundness.Multiopen.ValueCheckX3`), consumed by
+`Soundness.Vesta.orchard_verifier_vesta_member_constraint_derived`. -/
 theorem claimedCombined_of_x2Prob {x3 : Fp} {sets : List (List Fp × List Fp × Fp)}
     (hlen : 0 < sets.length)
     (acc : Fp → Prop) [DecidablePred acc]

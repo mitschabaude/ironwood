@@ -26,11 +26,14 @@ open Polynomial
 
 variable {G : Type*} [AddCommGroup G] [Module Fp G]
 
--- Tracked decode gap: the two conjuncts of `SnarkRelation` share only the symbol `a`.
--- Until the decode is pinned, the free decode function feeding `circuitSatViaGates` may be
--- instantiated independently of `a`, so `circuitSat a` need not constrain the extracted witness
--- at all. Binding the decode to `a` — via the proven but currently unused `batch_open_soundV` —
--- is exactly what closes it.
+-- Decode gap (closed by the multiopen decode layer): the two conjuncts of `SnarkRelation` share
+-- only the symbol `a`, so a free decode function feeding `circuitSatViaGates` could be instantiated
+-- independently of `a` and `circuitSat a` would not constrain the extracted witness. The deployed
+-- capstones close this by stating `circuitSat` at the canonical decode of the extracted witness —
+-- the rewound-opening decode chain of `Soundness.Multiopen.Decode` (the `batch_open_soundV`-shaped
+-- premises carried by `OpenedBatchOpenings`, unbatched to member columns by
+-- `openedMemberDecode_of_x1Prob`), consumed by
+-- `Soundness.Vesta.orchard_verifier_vesta_member_constraint_derived`.
 /-- A witness that both opens the IPA commitment and satisfies the circuit predicate. -/
 structure SnarkRelation (urs : URS G) (P : G) (b : Fin (2 ^ urs.k) → Fp) (v : Fp)
     (circuitSat : (Fin (2 ^ urs.k) → Fp) → Prop) (a : Fin (2 ^ urs.k) → Fp) : Prop where

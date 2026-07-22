@@ -890,15 +890,15 @@ open Polynomial in
 open scoped ENNReal in
 open Classical in
 set_option maxHeartbeats 1000000 in
-/-- **Terminal deployed member capstone: `hquot` derived, not assumed.** From the multiopen value
-check's node binding — each decoded member column, fed through its layout rotation, evaluates at `x`
-to its claimed evaluation (`hfixed`/`hadvice`/`hinstance`, the deployed instantiation of
-`ValueCheckDeployed.deployed_setAggregate_node_binding` + the `x₁` un-batch) — and the gate-fold
-identity (`hfold`, halo2's `expectedHEval`, definitional once `gates` are the deployed
-`subProofExpressions`), `Constraints.quotientCheck_of_claimed` produces `hquot`, threaded into
+/-- **Terminal deployed member capstone: `hquot` derived, not assumed.** From per-column claimed
+evaluations — `hfixed`/`hadvice`/`hinstance`, hypotheses here, derived from the forking floors by
+`orchard_verifier_vesta_member_constraint_derived` below — and the gate-fold identity (`hfold`,
+halo2's `expectedHEval`, definitional once `gates` are the deployed `subProofExpressions`),
+`Constraints.quotientCheck_of_claimed` produces `hquot`, threaded into
 `orchard_verifier_vesta_member_constraint_deployed_x4`. This closes the multiopen value check into the
-gate check; the only residual trust surface is the gate STRUCTURE `gates = subProofExpressions`, the
-equivalence fingerprint (zcash/ironwood#11/#13) on the same footing as the RO-uniformity axiom. -/
+gate check; once the claimed evaluations are derived, the residual trust surface is the gate
+STRUCTURE `gates = subProofExpressions`, the equivalence fingerprint (zcash/ironwood#11/#13) on the
+same footing as the RO-uniformity axiom. -/
 theorem orchard_verifier_vesta_member_constraint_deployed_terminal [DecidableEq VestaG]
     [Inhabited VestaG] {shape : Shape} (urs : URS VestaG) (hk : shape.k = urs.k)
     (vk : VerifyingKey shape Fp VestaG) (ps : ProofString shape Fp VestaG)
@@ -1003,9 +1003,9 @@ member's set (`deployed_query_point_mem`, F4), and the member node binding from 
 column's value there to the deployed claimed evaluation (`deployedClaimedFeed`), on pain of a
 computed `(g, U, W)` relation. The gate fold `hfold` — halo2's `expected_h_eval` identity — is
 stated at exactly those deployed claimed evaluations, the gate-structure fingerprint surface
-(zcash/ironwood#11/#13), and `hgood` is the Schwartz–Zippel floor `hgood_of_xProb` discharges. The
-residual premises are the forking floors, the sample-avoidance floor, and the layout/eval range
-facts — no per-column value hypothesis remains. -/
+(zcash/ironwood#11/#13), and `hgood` is the Schwartz–Zippel surface whose production from the
+deployed `x`-squeeze measure is `hgood_of_xProb`. The residual premises are the forking floors, the
+sample-avoidance floor, and the layout/eval range facts — no per-column value hypothesis remains. -/
 theorem orchard_verifier_vesta_member_constraint_derived [DecidableEq VestaG]
     [Inhabited VestaG] {shape : Shape} (urs : URS VestaG) (hk : shape.k = urs.k)
     (vk : VerifyingKey shape Fp VestaG) (ps : ProofString shape Fp VestaG)

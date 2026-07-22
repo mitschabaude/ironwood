@@ -236,8 +236,9 @@ theorem coeffsToPoly_eval {k : ℕ} (a : Fin (2 ^ k) → Fp) (x : Fp) :
 /-- A family of rewound batched openings for one batch of column commitments.
 
 `batched r` is the IPA witness extracted when the batching challenge is `batchChallenge r`; `current_eq`
-marks which rewound opening is the current deployed witness. The commitment and value equations are the
-premises consumed by `batch_open_soundV`. -/
+marks which rewound opening is the current deployed witness. The commitment and value equations are
+`batch_open_soundV`'s premise shape; `decodedColumnFamily_of_batch_openings` inverts them into the
+per-column decode. -/
 structure BatchOpeningsForWitness (urs : URS G) (b : Fin (2 ^ urs.k) → Fp) {numColumns : ℕ}
     (columnCommitments : Fin numColumns → G) (columnEvals : Fin numColumns → Fp)
     (currentWitness : Fin (2 ^ urs.k) → Fp) where
