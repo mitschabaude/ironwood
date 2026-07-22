@@ -385,4 +385,53 @@ theorem deployed_combined_floor_holds [DecidableEq G] [Inhabited G] {shape : Sha
     rw [tsub_le_iff_right, add_comm]; exact hsub
   exact le_trans (tsub_le_tsub_left hfail 1) hgood
 
+/-- **Budget → single-path floors (stage 4b bridge).** On the good event
+`deployedFloorFailureSetᶜ` each level's squeeze floor holds *conditioned on that level's sampled
+accept*: if the sampled run at level `i` accepts, its accept-measure at the `g`-determined base
+exceeds the threshold `tᵢ`. This is the per-level de Morgan reading of `w ∉ deployedFloorFailureSet`
+(`¬(accᵢ ∧ ¬floorᵢ) = accᵢ → floorᵢ`), and it is exactly the four *single-run* floor facts a
+single-path member terminal would consume in place of the current derived terminal's ∀-over-runs
+`hx2`/`hprob3`/`hprob4`. Combined with `deployed_combined_floor_holds` (`μ(good) ≥ 1 − Σtᵢ`), this
+localises the residual: the only piece still missing for the unconditional deployed budget is a
+single-path member terminal — one whose floor premises are these `g`-determined single-run floors
+rather than universally quantified over the splice runs `X1Run`/`X2Run`/`X3Run` (which the nested
+extraction core `deployed_member_node_binding` currently quantifies over). -/
+theorem deployed_singlepath_floor_of_good [DecidableEq G] [Inhabited G] {shape : Shape}
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (g₁ : Fp → X1Run shape G) (g₂ : Fp → Fp → X2Run shape G) (g₃ : Fp → Fp → Fp → X3Run shape G)
+    (b₂ : Fp → Fin (2 ^ urs.k) → Fp) (t₁ t₂ t₃ t₄ : ℝ≥0∞)
+    {w : Fp × Fp × Fp × Fp}
+    (hw : w ∉ deployedFloorFailureSet urs hk vk ps ch g₁ g₂ g₃ b₂ t₁ t₂ t₃ t₄) :
+    (OpenedX1Accept urs hk vk ps ch w.1 →
+        t₁ < (PMF.uniformOfFintype Fp).toOuterMeasure
+              (Finset.univ.filter (OpenedX1Accept urs hk vk ps ch)))
+    ∧ (OpenedX2Accept urs hk vk ((g₁ w.1).spliced ps) ((g₁ w.1).challenges ch w.1) (b₂ w.1) w.2.1 →
+        t₂ < (PMF.uniformOfFintype Fp).toOuterMeasure
+              (Finset.univ.filter (OpenedX2Accept urs hk vk ((g₁ w.1).spliced ps)
+                ((g₁ w.1).challenges ch w.1) (b₂ w.1))))
+    ∧ (OpenedX3Accept urs hk vk ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps))
+          ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1)
+          (evalVector urs.k w.2.2.1) w.2.2.1 →
+        t₃ < (PMF.uniformOfFintype Fp).toOuterMeasure
+              (Finset.univ.filter (fun χv => OpenedX3Accept urs hk vk
+                ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps))
+                ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1)
+                (evalVector urs.k χv) χv)))
+    ∧ (OpenedX4Accept urs hk vk
+          ((g₃ w.1 w.2.1 w.2.2.1).spliced ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps)))
+          ((g₃ w.1 w.2.1 w.2.2.1).challenges
+            ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1) w.2.2.1)
+          (evalVector urs.k w.2.2.1) w.2.2.2 →
+        t₄ < (PMF.uniformOfFintype Fp).toOuterMeasure
+              (Finset.univ.filter (OpenedX4Accept urs hk vk
+                ((g₃ w.1 w.2.1 w.2.2.1).spliced
+                  ((g₂ w.1 w.2.1).spliced ((g₁ w.1).spliced ps)))
+                ((g₃ w.1 w.2.1 w.2.2.1).challenges
+                  ((g₂ w.1 w.2.1).challenges ((g₁ w.1).challenges ch w.1) w.2.1) w.2.2.1)
+                (evalVector urs.k w.2.2.1)))) := by
+  simp only [deployedFloorFailureSet, Set.mem_union, Set.mem_setOf_eq, not_or, not_and,
+    not_not] at hw
+  exact ⟨hw.1.1.1, hw.1.1.2, hw.1.2, hw.2⟩
+
 end Zcash.Snark
