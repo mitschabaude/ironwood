@@ -221,16 +221,17 @@ theorem openedX3_perχ_consistency [DecidableEq G] [Inhabited G] {shape : Shape}
   · exact Or.inr hdlr
 
 set_option maxHeartbeats 1000000 in
-/-- **The deployed `x₃` value check, closed to the inner `x₂` consistency (F3 capstone).** Assembling
+/-- The deployed `x₃` value check closed to the inner `x₂` consistency — the *aggregate route*,
+superseded by the fixed-`q′` chain (`deployed_value_check_node_binding` below) and retained as the
+record of why that route was taken instead. Assembling
 the per-χ consistency (`openedX3_perχ_consistency`) over the `x₃`-rewind family: *either* the honest
 `x₄`-slot aggregate for point set `j` takes its claimed interpolation at each rotated set point (the
 node binding, via `claimedEval_of_x3Prob` at the χ-dependent accept), *or* a nontrivial `(g, U, W)`
 relation exists. Classical case split on whether the per-χ consistency holds for every accepting
 `x₃`-rewind: if it does, the `x₃` floor pins the aggregate to the `r`-polynomial; if it fails at some
-`χ`, the per-χ dichotomy there yields the relation. The remaining premises are all genuine forking
-floors — the `x₃` accept measure `hprob`, the nested `x₄` measures `hprob4` — plus the inner `x₂`
-consistency `hx2cons` (the innermost fork, an open obligation — see `hx2cons_slot_eq_multiopenU`).
-No `hconsistent` assumed: it is produced here. -/
+`χ`, the per-χ dichotomy there yields the relation. The inner `x₂`
+consistency `hx2cons` is this route's open obligation (see `hx2cons_slot_eq_multiopenU`); the live
+chain avoids it by anchoring on the fixed `q′` across `x₃`-rewinds. -/
 theorem deployed_aggregate_node_binding_or_dlr [DecidableEq G] [Inhabited G] {shape : Shape}
     (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
     (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
@@ -292,9 +293,8 @@ theorem hx2cons_slot_eq_multiopenU [DecidableEq G] [Inhabited G] {shape : Shape}
 
 /-- `multiopenEval` in forward-order power form: reindexing `multiopenEval_powerForm` by set
 reflection, so ascending set index `j` carries `x₂^(len−1−j)` and reads `sets.getD j` directly
-(no `reverse`). The bookkeeping step toward matching the deployed value check against the
-per-set `hsamp` shape `node_binding_of_samples` consumes (instantiated at the deployed grouping by
-`deployed_node_binding_of_grid`). -/
+(no `reverse`). A reference identity: the live chain (`deployed_node_binding_of_grid`) consumes
+the reversed indexing directly, so nothing routes through this form. -/
 theorem multiopenEval_powerForm_forward (x2 x3 : Fp) (sets : List (List Fp × List Fp × Fp)) :
     multiopenEval x2 x3 sets
       = ∑ j ∈ Finset.range sets.length,
