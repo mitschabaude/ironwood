@@ -67,7 +67,6 @@ theorem escapeSet_subset_triple [Zero α] {d : ℕ} {acc : (Fin (d + 1) → α) 
     (hdoom : ¬ Extractable acc) :
     ∃ a b : α, {u : α | u = 0 ∨ Extractable (fun rest => acc (Fin.cons u rest))}
       ⊆ {0, a, b} := by
-  classical
   by_cases hne : ∃ a : α, a ≠ 0 ∧ Extractable (fun rest => acc (Fin.cons a rest))
   · obtain ⟨a, ha0, haE⟩ := hne
     by_cases hb : ∃ b : α, b ≠ 0 ∧ b ≠ a ∧ Extractable (fun rest => acc (Fin.cons b rest))
@@ -108,7 +107,6 @@ def ladderEscapeSet [Zero α] : {d : ℕ} → ((Fin d → α) → Prop) → (Fin
       else {u : α | u = 0 ∨ Extractable (fun rest => acc (Fin.cons u rest))}
   | _ + 1, acc, χ, j + 1 => ladderEscapeSet (fun rest => acc (Fin.cons (χ 0) rest)) (Fin.tail χ) j
 
-open Classical in
 /-- The round-`j` escape set reads only the challenges before round `j`. -/
 theorem ladderEscapeSet_congr [Zero α] :
     {d : ℕ} → (acc : (Fin d → α) → Prop) → (χ χ' : Fin d → α) → (j : ℕ) →
@@ -140,7 +138,6 @@ theorem exists_mem_ladderEscapeSet [Zero α] :
           (fun rest => acc (Fin.cons (χ 0) rest)) (Fin.tail χ) h
         exact ⟨j.succ, hj⟩
 
-open Classical in
 /-- Every round's escape set lies in at most three challenges. -/
 theorem ladderEscapeSet_subset_triple [Zero α] :
     {d : ℕ} → (acc : (Fin d → α) → Prop) → (χ : Fin d → α) → (j : ℕ) →
@@ -180,7 +177,6 @@ theorem extractable_of_kerr_lt [Fintype α] [DecidableEq α] [Zero α] :
       rw [Subsingleton.elim Fin.elim0 x]
       exact hx.2
   | d + 1, acc, _, h => by
-      classical
       have hslice : (Finset.univ.filter acc).card
           = ∑ u : α, (Finset.univ.filter (fun rest : Fin d → α => acc (Fin.cons u rest))).card :=
         card_filter_eq_sum_slice acc

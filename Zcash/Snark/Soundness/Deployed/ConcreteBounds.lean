@@ -1,4 +1,4 @@
-import Zcash.Snark.Core.Field
+import Zcash.Arithmetic
 import Zcash.Snark.Soundness.Forking.KnowledgeError
 
 /-!
@@ -20,6 +20,8 @@ module records what that floor evaluates to:
 -/
 
 namespace Zcash.Snark
+
+open Zcash.Arithmetic (card_Fp scalarFieldOrder)
 
 open scoped ENNReal
 

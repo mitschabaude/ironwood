@@ -1,5 +1,5 @@
 import Mathlib
-import Zcash.Snark.Core.Group
+import Zcash.Arithmetic
 
 /-!
 # Inner-product opening relation
@@ -24,7 +24,7 @@ namespace Zcash.Snark
 variable {F G : Type*} [Field F] [AddCommGroup G] [Module F G]
 
 /-- The polynomial commitment of a coefficient vector `a` against the URS generators:
-`⟨a, G⟩ = Σᵢ aᵢ • gᵢ`. This is the `g`-part of the fingerprint MSM (`Zcash.Snark.Msm.eval`). -/
+`⟨a, G⟩ = Σᵢ aᵢ • gᵢ`. This is the `g`-part of the fingerprint MSM (`Zcash.Arithmetic.Msm.eval`). -/
 def commit (urs : URS G) (a : Fin (2 ^ urs.k) → F) : G :=
   ∑ i, a i • urs.g i
 

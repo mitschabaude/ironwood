@@ -32,14 +32,20 @@ structure Config where
 
 /-- The "Full-width fixed-base scalar mul" gate: the shared `coords_check` over the raw
 `window` query, plus the 3-bit window range check — all on `q_mul_fixed_full`. -/
-def fullWidthGate (cfg : Config) : Gate Fp where
-  name := "Full-width fixed-base scalar mul"
-  selector := cfg.qMulFixedFull
-  constraints :=
+def fullWidthGate (cfg : Config) : Gate Fp :=
+  -- the raw `window` query first, then `coords_check`'s atoms (y_p, x_p, the fixed `z`, u)
+  -- and the eight Lagrange-coeff fixed queries from `interpolated_x`.
+  Gate.withSelector "Full-width fixed-base scalar mul" cfg.qMulFixedFull
+    [ queryAdvice cfg.superConfig.window 0,
+      queryAdvice cfg.superConfig.addConfig.yP 0, queryAdvice cfg.superConfig.addConfig.xP 0,
+      queryFixed cfg.superConfig.fixedZ, queryAdvice cfg.superConfig.u 0,
+      queryFixed (cfg.superConfig.lagrangeCoeffs 0), queryFixed (cfg.superConfig.lagrangeCoeffs 1),
+      queryFixed (cfg.superConfig.lagrangeCoeffs 2), queryFixed (cfg.superConfig.lagrangeCoeffs 3),
+      queryFixed (cfg.superConfig.lagrangeCoeffs 4), queryFixed (cfg.superConfig.lagrangeCoeffs 5),
+      queryFixed (cfg.superConfig.lagrangeCoeffs 6), queryFixed (cfg.superConfig.lagrangeCoeffs 7) ] <|
     let window : Expression Fp Query := queryAdvice cfg.superConfig.window 0
-    Constraints.withSelector cfg.qMulFixedFull
-      (coordsCheck cfg.superConfig window
-        ++ [("window range check", rangeCheckExpr 8 window)])
+    coordsCheck cfg.superConfig window
+      ++ [("window range check", rangeCheckExpr 8 window)]
 
 /-- Allocate a fresh selector, register the gate. -/
 def configure (superConfig : MulFixed.Config) : Configure Fp Config := do
@@ -47,6 +53,11 @@ def configure (superConfig : MulFixed.Config) : Configure Fp Config := do
   let cfg : Config := { qMulFixedFull, superConfig }
   createGate (fullWidthGate cfg)
   return cfg
+
+instance (superConfig : MulFixed.Config) :
+    ElaboratedConfigure (configure superConfig) := by
+  unfold configure
+  infer_instance
 
 /-- `decompose_scalar_fixed`: enable `q_mul_fixed_full` on all `numWindows` rows, then
 witness the scalar's 3-bit windows `k[w]` into the `window` column — from the window

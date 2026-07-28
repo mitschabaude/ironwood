@@ -6,6 +6,7 @@ extend-exclude = [
   "*.json",
   "*.svg",
   "*.lock",
+  "SHA256SUMS",
   "LICENSE-*",
   "book/book/",
   "target/",
@@ -25,4 +26,10 @@ extend-ignore-identifiers-re = [
 ]
 
 [default.extend-words]
+optin = "optin" # scripts/check_native_optin.py
+thr = "thr"  # threshold identifiers (`thr`, `thr1`, `thr4`) in Composition/Completeness
+hsi = "hsi"  # hypothesis identifiers (`hsiN`) in Verifier/Assemble
+henc = "henc"  # hypothesis identifier (`henc`) in Circuits/Integration/ActionCopyWitness
+padd = "padd"  # projective point addition (`padd`) in Vendor/CompPoly/ScalarFftDefs
+Hom = "Hom"  # `RingHom`, `evalRingHom` — Mathlib's homomorphism naming
 advices = "advices"

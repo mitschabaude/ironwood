@@ -20,6 +20,8 @@ and ties that equation to the deployed accept condition:
 
 namespace Zcash.Snark
 
+open Zcash.Arithmetic (Msm Msm.zero)
+
 variable {F G : Type*} [Field F] [AddCommGroup G] [Module F G]
 
 omit [Field F] [AddCommGroup G] [Module F G] in
@@ -65,16 +67,17 @@ omit [AddCommGroup G] [Module F G] in
 non-rejecting `assembleFinalMsm` over the derived grouping, so `eval_assembleFinalMsm` (hence the
 verifier equation) applies to it. -/
 theorem assemble?_eq_some {shape : Shape} [DecidableEq F] [DecidableEq G] [Inhabited G]
-    (vk : VerifyingKey shape F G) (ps : ProofString shape F G) (ch : Challenges shape.k F)
-    {m : Msm shape.k F G} (h : assemble? vk ps ch = some m) :
-    m = assembleFinalMsm ps ch (constructIntermediateSets (assembleQueries vk ps ch)) := by
+    (vk : VerifyingKey shape F G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape F G) (ch : Challenges shape.k F)
+    {m : Msm shape.k F G} (h : assemble? vk instanceCommitment ps ch = some m) :
+    m = assembleFinalMsm ps ch (constructIntermediateSets (assembleQueries vk instanceCommitment ps ch)) := by
   unfold assemble? at h
   by_cases hwf : proofStringWellFormed ps = true
   · rw [if_pos hwf] at h
     by_cases hxn : ch.x ^ vk.n = (1 : F)
     · rw [if_pos hxn] at h; exact absurd h (by simp)
     · rw [if_neg hxn] at h
-      cases hcis : constructIntermediateSets? (assembleQueries vk ps ch) with
+      cases hcis : constructIntermediateSets? (assembleQueries vk instanceCommitment ps ch) with
       | none => rw [hcis] at h; exact absurd h (by simp)
       | some grouped =>
           rw [hcis] at h
@@ -90,16 +93,18 @@ theorem assemble?_eq_some {shape : Shape} [DecidableEq F] [DecidableEq G] [Inhab
 multiopen assembly on `(vk, ps, ch)`, evaluated against the URS. -/
 def multiopenCommitment {shape : Shape} [DecidableEq F] [DecidableEq G] [Inhabited G]
     (g : Fin (2 ^ shape.k) → G) (w u : G)
-    (vk : VerifyingKey shape F G) (ps : ProofString shape F G) (ch : Challenges shape.k F) : G :=
+    (vk : VerifyingKey shape F G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape F G) (ch : Challenges shape.k F) : G :=
   (assembleOpening ch.x1 ch.x2 ch.x3 ch.x4 ps.multiopenQPrime (List.ofFn ps.multiopenU)
-    (constructIntermediateSets (assembleQueries vk ps ch)) (Msm.zero shape.k F G)).1.eval ⟨shape.k, g, w, u⟩
+    (constructIntermediateSets (assembleQueries vk instanceCommitment ps ch)) (Msm.zero shape.k F G)).1.eval ⟨shape.k, g, w, u⟩
 
 /-- The deployed multiopen value `v` the IPA verifier opens `P` to (halo2 `multiopen/verifier.rs`). -/
 def multiopenValue {shape : Shape} [DecidableEq F] [DecidableEq G] [Inhabited G]
-    (vk : VerifyingKey shape F G) (ps : ProofString shape F G)
+    (vk : VerifyingKey shape F G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape F G)
     (ch : Challenges shape.k F) : F :=
   (assembleOpening ch.x1 ch.x2 ch.x3 ch.x4 ps.multiopenQPrime (List.ofFn ps.multiopenU)
-    (constructIntermediateSets (assembleQueries vk ps ch)) (Msm.zero shape.k F G)).2
+    (constructIntermediateSets (assembleQueries vk instanceCommitment ps ch)) (Msm.zero shape.k F G)).2
 
 /-- The deployed fingerprint MSM evaluates to halo2's explicit IPA verifier equation: the
 multiopen commitment, the `[-v]g₀` value term, the `[ξ]S` blinding poly, the round total
@@ -139,11 +144,12 @@ knowledge-error count `Soundness.Forking.Tree.kerr` — so this totality concern
 definedness, not the extractor's admissible challenges. -/
 def DeployedIpaVerifierEq {shape : Shape} [DecidableEq F] [DecidableEq G] [Inhabited G]
     (g : Fin (2 ^ shape.k) → G) (w u : G)
-    (vk : VerifyingKey shape F G) (ps : ProofString shape F G) (ch : Challenges shape.k F) : Prop :=
+    (vk : VerifyingKey shape F G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape F G) (ch : Challenges shape.k F) : Prop :=
   (assembleOpening ch.x1 ch.x2 ch.x3 ch.x4 ps.multiopenQPrime (List.ofFn ps.multiopenU)
-        (constructIntermediateSets (assembleQueries vk ps ch)) (Msm.zero shape.k F G)).1.eval ⟨shape.k, g, w, u⟩
+        (constructIntermediateSets (assembleQueries vk instanceCommitment ps ch)) (Msm.zero shape.k F G)).1.eval ⟨shape.k, g, w, u⟩
       + (∑ i, ([-(assembleOpening ch.x1 ch.x2 ch.x3 ch.x4 ps.multiopenQPrime (List.ofFn ps.multiopenU)
-          (constructIntermediateSets (assembleQueries vk ps ch)) (Msm.zero shape.k F G)).2].getD i.val 0) • g i)
+          (constructIntermediateSets (assembleQueries vk instanceCommitment ps ch)) (Msm.zero shape.k F G)).2].getD i.val 0) • g i)
       + ch.xi • ps.ipaS
       + (((List.ofFn ps.ipaRounds).zip (List.ofFn ch.ipaRound)).map
           (fun p => p.2⁻¹ • p.1.1 + p.2 • p.1.2)).sum

@@ -139,7 +139,6 @@ variable {T F α : Type*} [DecidableEq T] [Fintype F]
 def extendOn (S : Finset T) (assign : {t // t ∈ S} → F) (f₀ : F) : T → F :=
   fun t => if h : t ∈ S then assign ⟨t, h⟩ else f₀
 
-open Classical in
 /-- The finite set of game points of a machine's attainable outputs: attainable outputs are runs
 over the finitely many reach-set assignments. -/
 noncomputable def gamePoints {n : ℕ} (A : OracleComp T F α) (pts : α → Fin n → T)
@@ -147,7 +146,6 @@ noncomputable def gamePoints {n : ℕ} (A : OracleComp T F α) (pts : α → Fin
   Finset.univ.biUnion fun assign : {t // t ∈ A.reachSet} → F =>
     Finset.univ.image fun j : Fin n => pts (A.run (extendOn A.reachSet assign f₀)) j
 
-open Classical in
 /-- Every run's game points land in the finite game-point set: the run agrees with the run over
 its own reach-set assignment. -/
 theorem pts_run_mem_gamePoints {n : ℕ} (A : OracleComp T F α) (pts : α → Fin n → T)
@@ -167,7 +165,6 @@ section Reduction
 
 variable {T F P : Type*} [DecidableEq T] [Fintype F] [Nonempty F]
 
-open Classical in
 /-- Restrict an adversary to a finite set containing every reachable query and attainable game
 point, preserving its query bound and outcome. -/
 theorem finite_domain_restriction {m k : ℕ} (hm : 0 < m)
@@ -180,7 +177,6 @@ theorem finite_domain_restriction {m k : ℕ} (hm : 0 < m)
       ∀ O : T → F,
         fsWinsFull A accept prefixesPre prefixes O
           ↔ fsWinsFull A₀ accept preS ptsS (fun t => O t.1) := by
-  classical
   obtain ⟨f₀⟩ := ‹Nonempty F›
   set S : Finset T := A.reachSet ∪ gamePoints A prefixesPre f₀ ∪ gamePoints A prefixes f₀
     with hSdef
@@ -217,7 +213,6 @@ theorem finite_domain_restriction {m k : ℕ} (hm : 0 < m)
     rw [dif_pos (hptsS O j)]
   rw [h1, h2]
 
-open Classical in
 /-- Adding independent junk coordinates to a finite game preserves its win probability. -/
 theorem fsWinsFull_mapDomain_measure_eq {T₀ J : Type*} [Fintype T₀] [DecidableEq T₀]
     [Fintype J] [DecidableEq J] {m k : ℕ}
@@ -238,7 +233,6 @@ theorem fsWinsFull_mapDomain_measure_eq {T₀ J : Type*} [Fintype T₀] [Decidab
   rw [hset, ← PMF.toOuterMeasure_map_apply,
     uniformOfFintype_map_precomp_injective Sum.inl Sum.inl_injective]
 
-open Classical in
 omit [Fintype F] [Nonempty F] in
 /-- Split and original machines have the same outcome on agreeing tables when all game points lie
 in the designated component. -/
@@ -266,7 +260,6 @@ theorem fsWinsFull_splitDomain {T T_D : Type*} [DecidableEq T] [Fintype F]
     exact (hD (ptsD (A.run Ofull) j)).symm
   rw [h1, h2]
 
-open Classical in
 /-- A bound for all `Q`-query machines on the designated finite domain also bounds a `Q`-query
 machine on an arbitrary domain. -/
 theorem fsWinsFull_unbounded_measure_le {T T_D : Type*} [DecidableEq T]

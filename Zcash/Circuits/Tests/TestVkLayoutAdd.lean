@@ -32,7 +32,7 @@ namespace Zcash.Circuits.Fixtures.Test.LayoutAdd
 
 open Halo2
 open Ecc.Add (Config add addFormal)
-open Fixtures.Layout
+open Fixtures.Layout Halo2.Layout
 
 /-- The harness config plus the columns `synthesize` needs for witnessing — the same
 `configure` chain as `TestVkMatchAdd.addProgram`, returning the advice columns too. -/

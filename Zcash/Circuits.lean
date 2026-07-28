@@ -81,6 +81,10 @@ import Zcash.Circuits.Ecc.Chip
 import Zcash.Circuits.Action.Circuit
 import Zcash.Circuits.Action.Bundle
 import Zcash.Circuits.Action.RealBases
+import Clean.Halo2.TopLevel
+import Zcash.Circuits.Action.TopLevel
+import Zcash.Circuits.Action.SelectorCoherence
+import Zcash.Circuits.Integration
 
 /-!
 # Ironwood circuits

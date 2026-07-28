@@ -262,7 +262,6 @@ private theorem length_permSetBlock {n : ℕ} (g : Fin n → PermSetEval Fp)
     (hg : ∀ s : Fin n, (g s).lastEval.isSome = ((s : ℕ) + 1 < n)) :
     ((List.ofFn (fun s => absorbPermSet (G := G) (g s))).flatten).length
       = 2 * n + (n - 1) := by
-  classical
   have hterm : ∀ s : Fin n, ((List.length ∘ fun s => absorbPermSet (G := G) (g s)) s)
       = 2 + (if (s : ℕ) + 1 < n then 1 else 0) := by
     intro s
@@ -645,6 +644,221 @@ theorem preIpaTranscript_inj {shape : Shape} (init : List (TranscriptElt Fp G))
   -- assemble
   exact psExt hAdv hLPI hLPT hPP hLP hVR hHP hIE hAE hFE hVRE hPCE hPSE hLE hQP hMU hIpaS
     rfl rfl rfl
+
+/-! ## Prefix injectivity at the multiopen squeeze points
+
+Equal `x₁`/`x₂`/`x₃`/`x₄` squeeze points pin every field absorbed before them, leaving exactly
+the fields a rewound run re-sends free — the invariance the resampled diagonal's transport
+consumes. Same peeling as `preIpaTranscript_inj`, stopped at the earlier prefix. -/
+
+private theorem preX1_fields_inj {shape : Shape} (init : List (TranscriptElt Fp G))
+    {ps ps' : ProofString shape Fp G} (hwf : PsWellFormed ps) (hwf' : PsWellFormed ps')
+    (h5 : sqPt5 init ps = sqPt5 init ps') :
+    ps.adviceCommitments = ps'.adviceCommitments ∧
+    ps.lookupPermutedInput = ps'.lookupPermutedInput ∧
+    ps.lookupPermutedTable = ps'.lookupPermutedTable ∧
+    ps.permutationProduct = ps'.permutationProduct ∧
+    ps.lookupProduct = ps'.lookupProduct ∧
+    ps.vanishingRandom = ps'.vanishingRandom ∧
+    ps.hPieces = ps'.hPieces ∧
+    ps.instanceEvals = ps'.instanceEvals ∧
+    ps.adviceEvals = ps'.adviceEvals ∧
+    ps.fixedEvals = ps'.fixedEvals ∧
+    ps.vanishingRandomEval = ps'.vanishingRandomEval ∧
+    ps.permutationCommonEvals = ps'.permutationCommonEvals ∧
+    ps.permutationSetEvals = ps'.permutationSetEvals ∧
+    ps.lookupEvals = ps'.lookupEvals := by
+  have h5' := List.append_inj' h5 rfl
+  have h4e := List.append_inj' h5'.1
+    (by rw [len_sqEvalElts ps hwf, len_sqEvalElts ps' hwf'])
+  have h4 : sqPt4 init ps = sqPt4 init ps' := h4e.1
+  have hEval : sqEvalElts ps = sqEvalElts ps' := h4e.2
+  have h4' := List.append_inj' h4 rfl
+  have h3h := List.append_inj' h4'.1
+    (by rw [length_absorbPoints, length_absorbPoints])
+  have h3 : sqPt3 init ps = sqPt3 init ps' := h3h.1
+  have hHP : ps.hPieces = ps'.hPieces := absorbPoints_inj h3h.2
+  have h3' := List.append_inj' h3 rfl
+  have h2v := List.append_inj' h3'.1 rfl
+  have hVR : ps.vanishingRandom = ps'.vanishingRandom := singleton_point_inj h2v.2
+  have h2l := List.append_inj' h2v.1
+    (by rw [length_absorbPoints2, length_absorbPoints2])
+  have hLP : ps.lookupProduct = ps'.lookupProduct := absorbPoints2_inj h2l.2
+  have h2p := List.append_inj' h2l.1
+    (by rw [length_absorbPoints2, length_absorbPoints2])
+  have h2 : sqPt2 init ps = sqPt2 init ps' := h2p.1
+  have hPP : ps.permutationProduct = ps'.permutationProduct := absorbPoints2_inj h2p.2
+  have h1 : sqPt1 init ps = sqPt1 init ps' := (List.append_inj' h2 rfl).1
+  have h1' := List.append_inj' h1 rfl
+  have h0l := List.append_inj' h1'.1
+    (by rw [length_absorbLookupPermuted, length_absorbLookupPermuted])
+  have h0 : sqPt0 init ps = sqPt0 init ps' := h0l.1
+  obtain ⟨hLPI, hLPT⟩ := absorbLookupPermuted_inj h0l.2
+  have h0' := List.append_inj' h0 rfl
+  have hAdva := List.append_inj' h0'.1
+    (by rw [length_absorbPoints2, length_absorbPoints2])
+  have hAdv : ps.adviceCommitments = ps'.adviceCommitments := absorbPoints2_inj hAdva.2
+  have he1 := List.append_inj' hEval
+    (by rw [length_lookupEvalBlock, length_lookupEvalBlock])
+  have hLE : ps.lookupEvals = ps'.lookupEvals := by
+    have hrow : ∀ p, (List.ofFn (fun l =>
+          absorbLookup (G := G) (ps.lookupEvals p l))).flatten
+        = (List.ofFn (fun l => absorbLookup (G := G) (ps'.lookupEvals p l))).flatten :=
+      flatten_ofFn_inj _ _ he1.2 (fun p => by
+        rw [length_flatten_ofFn_const (c := 5) _ fun _ => rfl,
+          length_flatten_ofFn_const (c := 5) _ fun _ => rfl])
+    have hcell : ∀ p l, absorbLookup (G := G) (ps.lookupEvals p l)
+        = absorbLookup (G := G) (ps'.lookupEvals p l) := fun p =>
+      flatten_ofFn_inj _ _ (hrow p) (fun l => rfl)
+    funext p l
+    exact absorbLookup_inj (hcell p l)
+  have he2 := List.append_inj' he1.1
+    (by rw [length_flatten_ofFn_const _ fun p => length_permSetBlock _ (hwf p),
+      length_flatten_ofFn_const _ fun p => length_permSetBlock _ (hwf' p)])
+  have hPSE : ps.permutationSetEvals = ps'.permutationSetEvals := by
+    have hrow : ∀ p, (List.ofFn (fun s =>
+          absorbPermSet (G := G) (ps.permutationSetEvals p s))).flatten
+        = (List.ofFn (fun s => absorbPermSet (G := G) (ps'.permutationSetEvals p s))).flatten :=
+      flatten_ofFn_inj _ _ he2.2 (fun p => by
+        rw [length_permSetBlock _ (hwf p), length_permSetBlock _ (hwf' p)])
+    have hcell : ∀ p s, absorbPermSet (G := G) (ps.permutationSetEvals p s)
+        = absorbPermSet (G := G) (ps'.permutationSetEvals p s) := fun p =>
+      flatten_ofFn_inj _ _ (hrow p) (fun s => by
+        rw [length_absorbPermSet, length_absorbPermSet,
+          show (ps.permutationSetEvals p s).lastEval.isSome
+              = (ps'.permutationSetEvals p s).lastEval.isSome from
+            Bool.eq_iff_iff.mpr (by rw [hwf p s, hwf' p s])])
+    funext p s
+    exact absorbPermSet_inj (G := G)
+      (Bool.eq_iff_iff.mpr (by rw [hwf p s, hwf' p s])) (hcell p s)
+  have he3 := List.append_inj' he2.1
+    (by rw [length_absorbScalars, length_absorbScalars])
+  have hPCE : ps.permutationCommonEvals = ps'.permutationCommonEvals :=
+    absorbScalars_inj he3.2
+  have he4 := List.append_inj' he3.1 rfl
+  have hVRE : ps.vanishingRandomEval = ps'.vanishingRandomEval := by
+    have := he4.2
+    simpa using this
+  have he5 := List.append_inj' he4.1
+    (by rw [length_absorbScalars, length_absorbScalars])
+  have hFE : ps.fixedEvals = ps'.fixedEvals := absorbScalars_inj he5.2
+  have he6 := List.append_inj' he5.1
+    (by rw [length_absorbScalars2, length_absorbScalars2])
+  have hAE : ps.adviceEvals = ps'.adviceEvals := absorbScalars2_inj he6.2
+  have hIE : ps.instanceEvals = ps'.instanceEvals := absorbScalars2_inj he6.1
+  exact ⟨hAdv, hLPI, hLPT, hPP, hLP, hVR, hHP, hIE, hAE, hFE, hVRE, hPCE, hPSE, hLE⟩
+
+/-- **`x`-prefix injectivity.** Two proofs with the same `x` squeeze point agree on every
+commitment absorbed before `x` — the advice, lookup-permuted, permutation-product,
+lookup-product, vanishing-random, and quotient-piece commitments. No well-formedness is needed:
+the pre-`x` segments have count-determined lengths. -/
+theorem preXSqueezePoint_inj {shape : Shape} (init : List (TranscriptElt Fp G))
+    {ps ps' : ProofString shape Fp G}
+    (h : preIpaSqueezePoints init ps 4 = preIpaSqueezePoints init ps' 4) :
+    ps.adviceCommitments = ps'.adviceCommitments ∧
+    ps.lookupPermutedInput = ps'.lookupPermutedInput ∧
+    ps.lookupPermutedTable = ps'.lookupPermutedTable ∧
+    ps.permutationProduct = ps'.permutationProduct ∧
+    ps.lookupProduct = ps'.lookupProduct ∧
+    ps.vanishingRandom = ps'.vanishingRandom ∧
+    ps.hPieces = ps'.hPieces := by
+  have h4 : sqPt4 init ps = sqPt4 init ps' := h
+  have h4' := List.append_inj' h4 rfl
+  have h3h := List.append_inj' h4'.1
+    (by rw [length_absorbPoints, length_absorbPoints])
+  have h3 : sqPt3 init ps = sqPt3 init ps' := h3h.1
+  have hHP : ps.hPieces = ps'.hPieces := absorbPoints_inj h3h.2
+  have h3' := List.append_inj' h3 rfl
+  have h2v := List.append_inj' h3'.1 rfl
+  have hVR : ps.vanishingRandom = ps'.vanishingRandom := singleton_point_inj h2v.2
+  have h2l := List.append_inj' h2v.1
+    (by rw [length_absorbPoints2, length_absorbPoints2])
+  have hLP : ps.lookupProduct = ps'.lookupProduct := absorbPoints2_inj h2l.2
+  have h2p := List.append_inj' h2l.1
+    (by rw [length_absorbPoints2, length_absorbPoints2])
+  have h2 : sqPt2 init ps = sqPt2 init ps' := h2p.1
+  have hPP : ps.permutationProduct = ps'.permutationProduct := absorbPoints2_inj h2p.2
+  have h1 : sqPt1 init ps = sqPt1 init ps' := (List.append_inj' h2 rfl).1
+  have h1' := List.append_inj' h1 rfl
+  have h0l := List.append_inj' h1'.1
+    (by rw [length_absorbLookupPermuted, length_absorbLookupPermuted])
+  have h0 : sqPt0 init ps = sqPt0 init ps' := h0l.1
+  obtain ⟨hLPI, hLPT⟩ := absorbLookupPermuted_inj h0l.2
+  have h0' := List.append_inj' h0 rfl
+  have hAdva := List.append_inj' h0'.1
+    (by rw [length_absorbPoints2, length_absorbPoints2])
+  have hAdv : ps.adviceCommitments = ps'.adviceCommitments := absorbPoints2_inj hAdva.2
+  exact ⟨hAdv, hLPI, hLPT, hPP, hLP, hVR, hHP⟩
+
+/-- **`x₁`-prefix injectivity.** Two well-formed proofs with the same `x₁` squeeze point agree on
+every field absorbed before `x₁` — only the multiopen and IPA fields are free. -/
+theorem preX1SqueezePoint_inj {shape : Shape} (init : List (TranscriptElt Fp G))
+    {ps ps' : ProofString shape Fp G} (hwf : PsWellFormed ps) (hwf' : PsWellFormed ps')
+    (h : preIpaSqueezePoints init ps 5 = preIpaSqueezePoints init ps' 5) :
+    ps = { ps' with
+            multiopenQPrime := ps.multiopenQPrime, multiopenU := ps.multiopenU,
+            ipaS := ps.ipaS, ipaRounds := ps.ipaRounds, ipaC := ps.ipaC,
+            ipaF := ps.ipaF } := by
+  obtain ⟨hAdv, hLPI, hLPT, hPP, hLP, hVR, hHP, hIE, hAE, hFE, hVRE, hPCE, hPSE, hLE⟩ :=
+    preX1_fields_inj init hwf hwf' (show sqPt5 init ps = sqPt5 init ps' from h)
+  exact psExt hAdv hLPI hLPT hPP hLP hVR hHP hIE hAE hFE hVRE hPCE hPSE hLE
+    rfl rfl rfl rfl rfl rfl
+
+/-- **`x₂`-prefix injectivity.** The `x₂` point pins the same fields as the `x₁` point (nothing
+is absorbed between the two squeezes). -/
+theorem preX2SqueezePoint_inj {shape : Shape} (init : List (TranscriptElt Fp G))
+    {ps ps' : ProofString shape Fp G} (hwf : PsWellFormed ps) (hwf' : PsWellFormed ps')
+    (h : preIpaSqueezePoints init ps 6 = preIpaSqueezePoints init ps' 6) :
+    ps = { ps' with
+            multiopenQPrime := ps.multiopenQPrime, multiopenU := ps.multiopenU,
+            ipaS := ps.ipaS, ipaRounds := ps.ipaRounds, ipaC := ps.ipaC,
+            ipaF := ps.ipaF } := by
+  have h6 : sqPt6 init ps = sqPt6 init ps' := h
+  obtain ⟨hAdv, hLPI, hLPT, hPP, hLP, hVR, hHP, hIE, hAE, hFE, hVRE, hPCE, hPSE, hLE⟩ :=
+    preX1_fields_inj init hwf hwf' (List.append_inj' h6 rfl).1
+  exact psExt hAdv hLPI hLPT hPP hLP hVR hHP hIE hAE hFE hVRE hPCE hPSE hLE
+    rfl rfl rfl rfl rfl rfl
+
+/-- **`x₃`-prefix injectivity.** The `x₃` point additionally pins the multiopen quotient
+commitment `q′`. -/
+theorem preX3SqueezePoint_inj {shape : Shape} (init : List (TranscriptElt Fp G))
+    {ps ps' : ProofString shape Fp G} (hwf : PsWellFormed ps) (hwf' : PsWellFormed ps')
+    (h : preIpaSqueezePoints init ps 7 = preIpaSqueezePoints init ps' 7) :
+    ps = { ps' with
+            multiopenU := ps.multiopenU, ipaS := ps.ipaS, ipaRounds := ps.ipaRounds,
+            ipaC := ps.ipaC, ipaF := ps.ipaF } := by
+  have h7 : sqPt7 init ps = sqPt7 init ps' := h
+  have h7' := List.append_inj' h7 rfl
+  have h6q := List.append_inj' h7'.1 rfl
+  have h6 : sqPt6 init ps = sqPt6 init ps' := h6q.1
+  have hQP : ps.multiopenQPrime = ps'.multiopenQPrime := singleton_point_inj h6q.2
+  obtain ⟨hAdv, hLPI, hLPT, hPP, hLP, hVR, hHP, hIE, hAE, hFE, hVRE, hPCE, hPSE, hLE⟩ :=
+    preX1_fields_inj init hwf hwf' (List.append_inj' h6 rfl).1
+  exact psExt hAdv hLPI hLPT hPP hLP hVR hHP hIE hAE hFE hVRE hPCE hPSE hLE
+    hQP rfl rfl rfl rfl rfl
+
+/-- **`x₄`-prefix injectivity.** The `x₄` point additionally pins the multiopen blinder
+evaluations `multiopenU` — only the IPA fields are free, matching the IPA splice. -/
+theorem preX4SqueezePoint_inj {shape : Shape} (init : List (TranscriptElt Fp G))
+    {ps ps' : ProofString shape Fp G} (hwf : PsWellFormed ps) (hwf' : PsWellFormed ps')
+    (h : preIpaSqueezePoints init ps 8 = preIpaSqueezePoints init ps' 8) :
+    ps = { ps' with
+            ipaS := ps.ipaS, ipaRounds := ps.ipaRounds, ipaC := ps.ipaC,
+            ipaF := ps.ipaF } := by
+  have h8 : sqPt8 init ps = sqPt8 init ps' := h
+  have h8' := List.append_inj' h8 rfl
+  have h7u := List.append_inj' h8'.1
+    (by rw [length_absorbScalars, length_absorbScalars])
+  have h7 : sqPt7 init ps = sqPt7 init ps' := h7u.1
+  have hMU : ps.multiopenU = ps'.multiopenU := absorbScalars_inj h7u.2
+  have h7' := List.append_inj' h7 rfl
+  have h6q := List.append_inj' h7'.1 rfl
+  have h6 : sqPt6 init ps = sqPt6 init ps' := h6q.1
+  have hQP : ps.multiopenQPrime = ps'.multiopenQPrime := singleton_point_inj h6q.2
+  obtain ⟨hAdv, hLPI, hLPT, hPP, hLP, hVR, hHP, hIE, hAE, hFE, hVRE, hPCE, hPSE, hLE⟩ :=
+    preX1_fields_inj init hwf hwf' (List.append_inj' h6 rfl).1
+  exact psExt hAdv hLPI hLPT hPP hLP hVR hHP hIE hAE hFE hVRE hPCE hPSE hLE
+    hQP hMU rfl rfl rfl rfl
 
 /-- Extend a bounded transcript table with zero outside the bound. The deployed schedule only reads
 in-bound transcripts. -/

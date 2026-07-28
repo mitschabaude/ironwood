@@ -1,5 +1,5 @@
 import Mathlib
-import Zcash.Snark.Core.Msm
+import Zcash.Arithmetic.Msm
 import Zcash.Snark.Fingerprint.SchwartzZippel
 import Zcash.Snark.Verifier.Assemble
 
@@ -43,6 +43,8 @@ fixture-generation boundary rather than being reimplemented in Lean.
 -/
 
 namespace Zcash.Snark
+
+open Zcash.Arithmetic (Msm scalarFieldOrder)
 
 /-- Two MSMs match iff their `g`/`w`/`u` coefficients are equal and their `other` term lists agree
 up to reordering (`List.Perm`) — term order is only a serialization artifact of how each assembler

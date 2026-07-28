@@ -66,6 +66,7 @@ structure Config where
 `Expression` builders over the config columns. -/
 
 /-- `x_r = λ₁² − x_a − x_p` at `rot` (Rust `DoubleAndAdd::x_r`). -/
+@[selector_free]
 def xRExpr (cfg : Config) (rot : Rotation) : Expression Fp Query :=
   let xA : Expression Fp Query := queryAdvice cfg.xA rot
   let xP : Expression Fp Query := queryAdvice cfg.xP rot
@@ -73,6 +74,7 @@ def xRExpr (cfg : Config) (rot : Rotation) : Expression Fp Query :=
   l1 * l1 - xA - xP
 
 /-- `Y_A = (λ₁ + λ₂)(x_a − x_r)` at `rot` (Rust `DoubleAndAdd::Y_A`). -/
+@[selector_free]
 def yAExpr (cfg : Config) (rot : Rotation) : Expression Fp Query :=
   let xA : Expression Fp Query := queryAdvice cfg.xA rot
   let l1 : Expression Fp Query := queryAdvice cfg.lambda1 rot
@@ -93,16 +95,17 @@ def yPExpr (cfg : Config) : Expression Fp Query :=
 /-- The `"Initial y_Q"` gate, gated by `q_sinsemilla4`: initializes the
 accumulator `y` to `y_Q` via `2·y_Q − Y_{A,cur} = 0`. Here `y_Q` is the `fixed_y_q` column at
 rotation 0 (the non-`allow_init_from_private_point` branch, which the action circuit uses). -/
-def initialYQGate (cfg : Config) : Gate Fp where
-  name := "Initial y_Q"
-  selector := cfg.qS4
-  constraints :=
+def initialYQGate (cfg : Config) : Gate Fp :=
+  -- `y_q` (fixed) first, then `Y_A(cur)`'s atoms (xA/λ₁/λ₂ @ cur) via the helper.
+  Gate.withSelector "Initial y_Q" cfg.qS4
+    [ queryFixed cfg.fixedYQ,
+      queryAdvice cfg.xA 0, queryAdvice cfg.lambda1 0, queryAdvice cfg.lambda2 0 ] <|
     let yQ : Expression Fp Query := queryFixed cfg.fixedYQ
-    Constraints.withSelector cfg.qS4
-      [("init y_q", yQ * (2 : Fp) - yAExpr cfg 0)]
+    [("init y_q", yQ * (2 : Fp) - yAExpr cfg 0)]
 
 /-- The synthetic selector `q_s3 = q_s2·(q_s2 − 1)`: `0` when `q_s2 ∈ {0,1}`, `2` when
 `q_s2 = 2` (final piece). -/
+@[selector_free]
 def qS3Expr (cfg : Config) : Expression Fp Query :=
   let qS2 : Expression Fp Query := queryFixed cfg.qS2
   qS2 * (qS2 - (1 : Fp))
@@ -112,10 +115,15 @@ def qS3Expr (cfg : Config) : Expression Fp Query :=
 - **secant line**: `λ₂² − (x_{a,next} + x_r + x_{a,cur}) = 0`.
 - **y check**:
   `4·λ₂·(x_{a,cur} − x_{a,next}) − [2·Y_{A,cur} + (2 − q_s3)·Y_{A,next} + 2·q_s3·λ₁_next] = 0`. -/
-def sinsemillaGate (cfg : Config) : Gate Fp where
-  name := "Sinsemilla gate"
-  selector := cfg.qS1
-  constraints :=
+def sinsemillaGate (cfg : Config) : Gate Fp :=
+  -- `q_s3` registers `q_s2` (fixed) first; then the closure's four lets; then `x_r(cur)`
+  -- adds x_p/λ₁ @ cur and `Y_A(next)` adds λ₂ @ next (cur-row `Y_A` atoms all deduped).
+  Gate.withSelector "Sinsemilla gate" cfg.qS1
+    [ queryFixed cfg.qS2,
+      queryAdvice cfg.lambda1 1, queryAdvice cfg.lambda2 0,
+      queryAdvice cfg.xA 0, queryAdvice cfg.xA 1,
+      queryAdvice cfg.xP 0, queryAdvice cfg.lambda1 0,
+      queryAdvice cfg.lambda2 1 ] <|
     let l2Cur : Expression Fp Query := queryAdvice cfg.lambda2 0
     let xACur : Expression Fp Query := queryAdvice cfg.xA 0
     let xANext : Expression Fp Query := queryAdvice cfg.xA 1
@@ -126,8 +134,7 @@ def sinsemillaGate (cfg : Config) : Gate Fp where
         - (yAExpr cfg 0 * (2 : Fp)
             + ((2 : Fp) - qS3Expr cfg) * yAExpr cfg 1
             + qS3Expr cfg * (2 : Fp) * l1Next)
-    Constraints.withSelector cfg.qS1
-      [("secant line", secant), ("y check", yCheck)]
+    [("secant line", secant), ("y check", yCheck)]
 
 /-! ## The 3-tuple generator lookup
 
@@ -156,6 +163,9 @@ def generatorLookup (G : Generators) (cfg : Config) : LookupArgument Fp where
     [ queryFixed cfg.generatorTable.tableIdx.inner,
       queryFixed cfg.generatorTable.tableX.inner,
       queryFixed cfg.generatorTable.tableY.inner ]
+  tablesFree := by
+    simp [Expression.SelectorFree, queryFixed]
+  arity := rfl
 
 /-! ## Configure
 
@@ -180,13 +190,24 @@ def configure (G : Generators) (xA xP bits lambda1 lambda2 : Column .advice)
   let cfg : Config :=
     { qS1, qS2, qS4, fixedYQ, xA, xP, lambda1, lambda2, bits, witnessPieces,
       generatorTable := genTable }
-  -- the 3-tuple generator lookup, registered before the gates
-  lookup [((generatorLookup G cfg).inputs[0]!, genTable.tableIdx),
+  -- the 3-tuple generator lookup, registered before the gates. The closure queries
+  -- `q_s2` (fixed, via `q_s3`), then `bits` cur/next, `x_p`, and the `y_p` block's
+  -- λ₁/x_a @ cur plus λ₂ @ cur (from `Y_A`).
+  lookup [queryFixed cfg.qS2, queryAdvice cfg.bits 0, queryAdvice cfg.bits 1,
+          queryAdvice cfg.xP 0, queryAdvice cfg.lambda1 0, queryAdvice cfg.xA 0,
+          queryAdvice cfg.lambda2 0]
+    [((generatorLookup G cfg).inputs[0]!, genTable.tableIdx),
           ((generatorLookup G cfg).inputs[1]!, genTable.tableX),
           ((generatorLookup G cfg).inputs[2]!, genTable.tableY)]
   createGate (initialYQGate cfg)
   createGate (sinsemillaGate cfg)
   return cfg
+
+instance (G : Generators) (xA xP bits lambda1 lambda2 : Column .advice)
+    (witnessPieces : Column .advice) (fixedYQ : Column .fixed)
+    (genTable : GeneratorTableConfig) :
+    ElaboratedConfigure
+      (configure G xA xP bits lambda1 lambda2 witnessPieces fixedYQ genTable) := {}
 
 /-- The boundary `q_s2` value: `0` between pieces, `2` on the message's final piece
 (`hash_to_point.rs::hash_piece`, `final_piece`). Deliberately NOT `@[simp]`: proofs keep it

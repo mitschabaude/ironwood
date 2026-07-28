@@ -1,5 +1,5 @@
 import Mathlib
-import Zcash.Snark.Core.Field
+import Zcash.Arithmetic
 
 /-!
 # The Schwartz–Zippel soundness bound for the fingerprint
@@ -18,6 +18,8 @@ fingerprint polynomial remains open; see `Zcash.Snark.Fingerprint.Match`.)
 -/
 
 namespace Zcash.Snark
+
+open Zcash.Arithmetic (card_Fp scalarFieldOrder)
 
 open MvPolynomial Finset Fintype
 

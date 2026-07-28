@@ -64,4 +64,16 @@ structure CollisionUpToSign [Neg F] (O : Q → F) where
 def Collision.upToSign [Neg F] {O : Q → F} (c : Collision O) : CollisionUpToSign O :=
   ⟨c.q₁, c.q₂, c.ne, Or.inl c.eq⟩
 
+/-- A collision of a partial oracle `O`, as data: two distinct queries on which `O` is
+defined, with equal outputs.  For a totalized partial function, plain `Collision` would
+also accept two undefined queries mapped to the same sentinel; requiring the successful
+evaluations keeps the event a genuine collision. -/
+structure DefinedCollision (O : Q → Option F) where
+  q₁ : Q
+  q₂ : Q
+  ne : q₁ ≠ q₂
+  output : F
+  eval₁ : O q₁ = some output
+  eval₂ : O q₂ = some output
+
 end Zcash.Security.RandomOracle

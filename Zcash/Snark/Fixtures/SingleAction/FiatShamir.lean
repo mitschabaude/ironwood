@@ -65,7 +65,7 @@ theorem deriveChallenges_matches_captured_schedule :
 /-- The Fiat–Shamir-derived fingerprint matches the captured single-action MSM under the concrete
 captured schedule oracle above. -/
 theorem nonInteractiveFingerprint_matches :
-    MsmMatch (nonInteractiveFingerprint capturedFs capturedInit vk ps) capturedMsm := by
+    MsmMatch (nonInteractiveFingerprint capturedFs capturedInit vk derivedInstanceCommitment ps) capturedMsm := by
   unfold nonInteractiveFingerprint
   rw [deriveChallenges_matches_captured_schedule]
   exact fingerprint_matches

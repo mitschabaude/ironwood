@@ -13,13 +13,10 @@ name: Fixtures
 # is platform-independent, so regeneration is bit-reproducible -- a diff means the
 # fixtures genuinely drifted from the pinned upstream, not run-to-run noise.
 #
-# Pins: `ORCHARD_REF` below is the Orchard release tag that ships the zcash/orchard#531
-# fingerprint capture, verified to regenerate the checked-in fixtures byte-for-byte. Bump it to
-# a newer Orchard release to re-check the fixtures against evolved upstream. Halo2 is not pinned
-# here: the released Orchard depends on `halo2_proofs` 0.3.3 from crates.io (no
-# `[patch.crates-io]`), so cargo resolves Halo2 during the build below -- no separate Halo2
-# pin/checkout. With both pins now stable, `Fixtures CI` is eligible to be marked a required
-# status check.
+# Pins: `ORCHARD_REF` below is the upstream `zcash/orchard` 0.15.3 release tag
+# (zcash/orchard#538 instance-commitment derivation capture); its capture harness
+# resolves the released `halo2_proofs` 0.3.4 from crates.io, whose
+# `dump_vesta_lean_fixture` emitted the checked-in fixtures. No fork pins.
 
 # Always triggers, so the `Fixtures CI` gate always reports (a workflow skipped by
 # `on.paths` would leave a required check pending). The heavy regeneration is instead
@@ -37,9 +34,10 @@ concurrency:
 permissions: {}
 
 env:
-  # Orchard release tag shipping zcash/orchard#531 ("Add Post-NU6.3 verifier fingerprint fixtures").
+  # Orchard release 0.15.3 (zcash/orchard#538 instance-commitment derivation capture),
+  # pinned by the release tag's commit SHA.
   ORCHARD_REPO: zcash/orchard
-  ORCHARD_REF: 0.15.1
+  ORCHARD_REF: 13e119a360c4034d23b7de08d15432748f65b9b9
 
 jobs:
   changes:
@@ -92,10 +90,10 @@ jobs:
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: orchard-capture
-      # Emits the two fixtures directly over the checked-in copies. Halo2 resolves from
-      # crates.io (`halo2_proofs` 0.3.3, Orchard's normal dependency), so no separate Halo2
-      # checkout is needed. The filter matches both accepting captures (`fingerprint_capture`
-      # and `fingerprint_capture_two_actions`) and not the Rust-only rejection tests.
+      # Emits both fixture modules directly over the checked-in copies. `halo2_proofs`
+      # resolves to the released 0.3.4 from crates.io, so no Halo2 checkout is needed. The
+      # filter matches both accepting captures (`fingerprint_capture` and
+      # `fingerprint_capture_two_actions`) and not the Rust-only rejection tests.
       - name: Regenerate the fixtures from the pinned capture
         working-directory: orchard-capture
         env:

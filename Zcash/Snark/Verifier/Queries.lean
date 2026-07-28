@@ -23,6 +23,8 @@ permutation, lookups; then shared: fixed, permutation-common, vanishing); that c
 
 namespace Zcash.Snark
 
+open Zcash.Arithmetic (Msm)
+
 /-- halo2 `domain.rotate_omega(x, Rotation(rot))`: the rotated evaluation point `x · ω^rot`, with `ω`
 the domain generator (VK-fixed). Negative rotations use the field's integer power. -/
 def rotateOmega {F : Type*} [Field F] (omega x : F) (rot : ℤ) : F := x * omega ^ rot
@@ -43,6 +45,29 @@ def columnQueries {k : ℕ} {F G : Type*} [Field F] (omega x : F) (commitment : 
   (layout.zip evals).map fun e =>
     { point := rotateOmega omega x e.1.2, commitment := .point (commitment e.1.1), eval := e.2,
       commId := mkId e.1.1 }
+
+/--
+The query at an in-range layout/evaluation index occurs in `columnQueries`.
+
+This exposes the exact query, including its claimed evaluation, for soundness
+arguments that reconstruct a resolver feed from the assembled opening list.
+-/
+theorem columnQuery_getD_mem
+    {k : ℕ} {F G : Type*} [Field F]
+    (omega x : F) (commitment : ℕ → G) (mkId : ℕ → CommitmentId)
+    (layout : List (ℕ × ℤ)) (evals : List F) {i : ℕ}
+    (hil : i < layout.length) (hie : i < evals.length) :
+    { point := rotateOmega omega x (layout.getD i (0, 0)).2,
+      commitment := .point (commitment (layout.getD i (0, 0)).1),
+      eval := evals.getD i 0,
+      commId := mkId (layout.getD i (0, 0)).1 } ∈
+        columnQueries (k := k) omega x commitment mkId layout evals := by
+  unfold columnQueries
+  refine List.mem_map.mpr ⟨(layout[i], evals[i]), ?_, ?_⟩
+  · rw [List.mem_iff_getElem]
+    refine ⟨i, by simp [hil, hie], ?_⟩
+    simp
+  · simp [hil, hie]
 
 /-- Permutation product queries (halo2 `permutation/verifier.rs`): open each set's product commitment
 at `x` and `ω x` (`xNext`), and — for every set except the last (`rev().skip(1)`) — at `ω^{last} x`

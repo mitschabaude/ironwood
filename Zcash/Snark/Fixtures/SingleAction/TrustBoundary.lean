@@ -1,5 +1,5 @@
 import Zcash.Snark.Fixtures.SingleAction.Fixture
-import Mathlib.Util.AssertNoSorry
+import Zcash.Meta.AxiomCheck
 
 /-!
 # Checked trust boundary of the concrete fingerprint fixture
@@ -14,34 +14,69 @@ Both checks below follow Lean's elaborated dependency graph (via `Lean.collectAx
 anywhere in the transitive closure — including the `Soundness/` proof layer and Mathlib — which a
 syntactic scan of the verifier sources cannot.
 
-* `assert_no_sorry` — fails the build if the named constant transitively depends on `sorryAx`. Applied to
-  `fingerprint_matches` (the captured match) and `assemble` (the verifier assembly it runs).
-* `#print axioms` pinned by `#guard_msgs` — freezes the exact axiom set `fingerprint_matches` rests on, so
+* `assert_axioms` (from `Zcash.Meta.AxiomCheck`) — bounds the trusted base at the standard tier and so
+  rejects `sorryAx` and any unexpected axiom, walking the whole dependency graph. Applied to every
+  captured fixture (`+native` for the `native_decide` ones) and to `assemble` (the verifier assembly it
+  runs).
+* `#print axioms` pinned by `#guard_msgs` — freezes the exact axiom set each captured claim rests on, so
   a newly introduced axiom changes the set and fails the build. The
-  pinned set records `fingerprint_matches._native.native_decide.ax_1_1`, the compiler-trust axiom that
-  `native_decide` generates for this theorem (this Lean version emits a per-declaration native axiom rather
+  pinned sets record `..._native.native_decide.ax_1_1`, the compiler-trust axiom that
+  `native_decide` generates for each theorem (this Lean version emits a per-declaration native axiom rather
   than the global `Lean.ofReduceBool`): pinning it documents that the one place compiler trust enters is
   this concrete numeric fixture, never a general theorem. The other three (`propext`, `Classical.choice`,
   `Quot.sound`) are the standard classical-logic axioms every Mathlib development uses.
+
+`instance_commitments_derived` and `capturedPublicInstances_within_lagrange` are pinned alongside
+`fingerprint_matches`: they carry the *derivation* of the instance commitments from the captured public
+inputs (ironwood#65), which is the trust this fixture buys in place of taking the commitments as opaque
+captured points. The derivation's supporting data and functions (`capturedUrsGLagrange`,
+`capturedPublicInstances`, `commitLagrange`, `derivedInstanceCommitment`) are bounded too, so the
+`native_decide` claims cannot be narrowed by quietly widening what they range over.
 -/
 
-open Zcash.Snark Zcash.Snark.Fixture
+-- Every captured fixture and the verifier assembly it runs are bounded at the standard tier — no
+-- `sorry`, no unexpected axiom (whole dependency graph). The `native_decide` fixtures carry the
+-- compiler-trust axiom, permitted by `+native` and pinned exactly by the `#print axioms` guards below.
+assert_axioms Zcash.Snark.Fixture.fingerprint_matches +native(
+  Zcash.Snark.Fixture.fingerprint_matches)
+assert_axioms Zcash.Snark.Fixture.capturedPointCoordinatesValid_eq_true +native(
+  Zcash.Snark.Fixture.capturedPointCoordinatesValid_eq_true)
+assert_axioms Zcash.Snark.Fixture.capturedInit_startsWith_vkTranscriptRepr +native(
+  Zcash.Snark.Fixture.capturedInit_startsWith_vkTranscriptRepr)
+assert_axioms Zcash.Snark.Fixture.capturedMsm_eval_eq_zero +native(
+  Zcash.Snark.Fixture.capturedMsm_eval_eq_zero)
+assert_axioms Zcash.Snark.Fixture.assembledMsm_eval_eq_zero +native(
+  Zcash.Snark.Fixture.capturedMsm_eval_eq_zero,
+  Zcash.Snark.Fixture.fingerprint_matches)
+assert_axioms Zcash.Arithmetic.Msm.evalNat
+assert_axioms Zcash.Snark.assemble
 
--- No `sorry` reaches the captured match or the verifier assembly it runs (whole dependency graph).
-assert_no_sorry fingerprint_matches
-assert_no_sorry capturedPointCoordinatesValid_eq_true
-assert_no_sorry capturedInit_startsWith_vkTranscriptRepr
-assert_no_sorry capturedMsm_eval_eq_zero
-assert_no_sorry assembledMsm_eval_eq_zero
-assert_no_sorry Msm.evalNat
-assert_no_sorry assemble
+-- The instance-commitment derivation: the two captured claims, plus the data and functions they
+-- range over. The latter are flagless — they are ordinary definitions, so compiler trust must not
+-- reach them; only the two claims about them may spend it.
+assert_axioms Zcash.Snark.Fixture.instance_commitments_derived +native(
+  Zcash.Snark.Fixture.instance_commitments_derived)
+assert_axioms Zcash.Snark.Fixture.capturedPublicInstances_within_lagrange +native(
+  Zcash.Snark.Fixture.capturedPublicInstances_within_lagrange)
+assert_axioms Zcash.Snark.Fixture.capturedUrsGLagrange
+assert_axioms Zcash.Snark.Fixture.capturedPublicInstances
+assert_axioms Zcash.Snark.Fixture.commitLagrange
+assert_axioms Zcash.Snark.Fixture.derivedInstanceCommitment
 
 -- `whitespace := lax` collapses all whitespace, so the pin is insensitive to how
 -- `#print axioms` line-wraps the list (a formatting artifact of the axiom-name lengths).
-/-- info: 'Zcash.Snark.Fixture.fingerprint_matches' depends on axioms: [propext, Classical.choice, Quot.sound, fingerprint_matches._native.native_decide.ax_1_1] -/
+/-- info: 'Zcash.Snark.Fixture.fingerprint_matches' depends on axioms: [propext, Classical.choice, Quot.sound, Zcash.Snark.Fixture.fingerprint_matches._native.native_decide.ax_1_1] -/
 #guard_msgs (whitespace := lax) in
-#print axioms fingerprint_matches
+#print axioms Zcash.Snark.Fixture.fingerprint_matches
 
-/-- info: 'Zcash.Snark.Fixture.capturedMsm_eval_eq_zero' depends on axioms: [propext, Classical.choice, Quot.sound, capturedMsm_eval_eq_zero._native.native_decide.ax_1_1] -/
+/-- info: 'Zcash.Snark.Fixture.capturedMsm_eval_eq_zero' depends on axioms: [propext, Classical.choice, Quot.sound, Zcash.Snark.Fixture.capturedMsm_eval_eq_zero._native.native_decide.ax_1_1] -/
 #guard_msgs (whitespace := lax) in
-#print axioms capturedMsm_eval_eq_zero
+#print axioms Zcash.Snark.Fixture.capturedMsm_eval_eq_zero
+
+/-- info: 'Zcash.Snark.Fixture.instance_commitments_derived' depends on axioms: [propext, Classical.choice, Quot.sound, Zcash.Snark.Fixture.instance_commitments_derived._native.native_decide.ax_1_1] -/
+#guard_msgs (whitespace := lax) in
+#print axioms Zcash.Snark.Fixture.instance_commitments_derived
+
+/-- info: 'Zcash.Snark.Fixture.capturedPublicInstances_within_lagrange' depends on axioms: [propext, Classical.choice, Quot.sound, Zcash.Snark.Fixture.capturedPublicInstances_within_lagrange._native.native_decide.ax_1_1] -/
+#guard_msgs (whitespace := lax) in
+#print axioms Zcash.Snark.Fixture.capturedPublicInstances_within_lagrange

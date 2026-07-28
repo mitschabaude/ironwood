@@ -54,7 +54,7 @@ namespace Zcash.Circuits.Fixtures.Test.Layout
 open Halo2
 open Ecc.Add (add)
 open Ecc.Mul (Config configure)
-open Fixtures.Layout
+open Fixtures.Layout Halo2.Layout
 
 /-- The harness config plus the columns `synthesize` needs for witnessing — built by the same
 `configure` chain as `TestVkMatchMul.mulProgram` (`configure_mul` in `dump.rs`), returning the

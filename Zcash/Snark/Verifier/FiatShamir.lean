@@ -19,6 +19,8 @@ field conversion with it is external. Fixtures use trusted typed captures, not t
 
 namespace Zcash.Snark
 
+open Zcash.Arithmetic (Msm)
+
 /-- A point, scalar, or challenge-domain marker written to the Fiat–Shamir transcript.
 
 The constructors correspond to halo2's three Blake2b domain prefixes. A squeeze absorbs `challenge`;
@@ -125,7 +127,8 @@ def deriveChallenges {shape : Shape} {F G : Type*} [Zero F] (fs : FiatShamir F G
 The random-oracle assumption is what transfers interactive soundness to this non-interactive MSM. -/
 def nonInteractiveFingerprint {shape : Shape} {F G : Type*} [Field F] [DecidableEq F] [DecidableEq G]
     [Inhabited G] (fs : FiatShamir F G) (init : List (TranscriptElt F G))
-    (vk : VerifyingKey shape F G) (ps : ProofString shape F G) : Msm shape.k F G :=
-  assemble vk ps (deriveChallenges fs init ps)
+    (vk : VerifyingKey shape F G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape F G) : Msm shape.k F G :=
+  assemble vk instanceCommitment ps (deriveChallenges fs init ps)
 
 end Zcash.Snark

@@ -1,6 +1,6 @@
-import Zcash.Circuits.Fixtures.Project
-import Zcash.Circuits.Fixtures.AddPre
+import Clean.Halo2.Keygen
 import Zcash.Circuits.Fixtures.AddPost
+import Zcash.Circuits.Fixtures.AddSelMap
 import Zcash.Circuits.Ecc.Add
 
 /-!
@@ -9,12 +9,10 @@ import Zcash.Circuits.Ecc.Add
 The first end-to-end VK match for Halo2-Clean. Runs the ported `Add.add.configure` on the same
 columns the Rust harness used (`advices[0..8]` in the roles
 `x_p, y_p, x_qr, y_qr, lambda, alpha, beta, gamma, delta`), projects the resulting
-`ConstraintSystem` to the ironwood `CsFixture` shape, and checks it **equal** to the fixture
-dumped from the actual Rust circuit (`AddPre.lean` / `AddPost.lean`).
-
-* `addPre`  — pre-selector-compression (gates still carry `.selector 0`).
-* `addPost` — post-`compress_selectors` (the single `q_add` selector packed into one new
-  fixed column; every `.selector 0` replaced by `.fixed 0`).
+`ConstraintSystem` to the `CsFixture` shape, and checks it **equal** to the fixture
+dumped from the actual Rust circuit (`AddPost.lean`: after `compress_selectors`, the
+single `q_add` selector is packed into one new fixed column, every selector atom
+replaced by `.fixed 0`).
 
 The comparison is `#guard` on `DecidableEq CsFixture`, so CI fails on any drift between the
 Lean Add port and the Rust constraint system.
@@ -45,19 +43,12 @@ def addProgram : Configure Fp Config := do
 
 def addCS : ConstraintSystem Fp := (addProgram {}).2
 
-/-- The Add gate's queried cells in halo2 declaration order (the closure's `let` sequence,
-`add.rs`): `x_p, y_p, x_q, y_q, x_r, y_r, λ, α, β, γ, δ` on advice columns `0..8`, with
-`x_r, y_r` at `Rotation::next()` on columns `2, 3`. This is halo2's `Gate::queried_cells`;
-it seeds the query-index walk so the projected layout and gate indices match Rust. -/
-def addSeed : List Query :=
-  [ .advice ⟨0⟩ 0, .advice ⟨1⟩ 0, .advice ⟨2⟩ 0, .advice ⟨3⟩ 0,
-    .advice ⟨2⟩ 1, .advice ⟨3⟩ 1,
-    .advice ⟨4⟩ 0, .advice ⟨5⟩ 0, .advice ⟨6⟩ 0, .advice ⟨7⟩ 0, .advice ⟨8⟩ 0 ]
+-- The gate's `queriedCells` registered faithfully (no ill-formed entries); the layout
+-- equality below then certifies the recorded order against the Rust dump.
+#guard addCS.invalidQueriedCells.isEmpty
 
--- Pre-compression: projected CS equals the dumped fixture.
-#guard projectCS addSeed addCS == addPre
-
--- Post-compression: projected CS equals the dumped fixture.
-#guard projectCSPost addSeed addCS == addPost
+-- Projected CS (query layouts from the configure-recorded queries, plus the packed
+-- column's fixed query appended by the projection) equals the dumped fixture.
+#guard projectCS addSelMap addCS == addPost
 
 end Zcash.Circuits.Fixtures.Test

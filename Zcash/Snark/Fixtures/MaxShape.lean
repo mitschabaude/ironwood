@@ -58,8 +58,9 @@ theorem allExpressions_at_captured_shape (n : ℕ) (vk : VerifyingKey (shape n) 
 /-- `assembleQueries_parametric_numProofs` at the captured Orchard shape, for every consensus-valid action count `n`,
 verifying key, proof string, and challenge assignment. -/
 theorem assembleQueries_at_captured_shape (n : ℕ) (vk : VerifyingKey (shape n) Fp G)
+    (instanceCommitment : Fin (shape n).numProofs → ℕ → G)
     (ps : ProofString (shape n) Fp G) (ch : Challenges (shape n).k Fp) :
-    assembleQueries vk ps ch =
+    assembleQueries vk instanceCommitment ps ch =
       let x := ch.x
       let xn := x ^ vk.n
       let xNext := rotateOmega vk.omega x 1
@@ -70,14 +71,14 @@ theorem assembleQueries_at_captured_shape (n : ℕ) (vk : VerifyingKey (shape n)
       let eHEval := expectedHEval exprs ch.y xn
       let hComm := vanishingHCommitment (shape n).k xn (List.ofFn ps.hPieces)
       let perProof := subProofBlocks (fun p : Fin (shape n).numProofs =>
-        subProofOpeningQueries vk ps x xInv xNext xLast p)
+        subProofOpeningQueries vk instanceCommitment ps x xInv xNext xLast p)
       let fixedQ := columnQueries vk.omega x vk.fixedCommitment CommitmentId.fixedCol
         vk.fixedQueryLayout (List.ofFn ps.fixedEvals)
       let permCommonQ := permutationCommonQueries x CommitmentId.permCommon
         (List.ofFn (fun c => (vk.permutationCommonCommitment c, ps.permutationCommonEvals c)))
       let vanishingQ := vanishingQueries x hComm eHEval ps.vanishingRandom ps.vanishingRandomEval
       perProof ++ fixedQ ++ permCommonQ ++ vanishingQ :=
-  assembleQueries_parametric_numProofs vk ps ch
+  assembleQueries_parametric_numProofs vk instanceCommitment ps ch
 
 /-- `deriveChallenges_parametric_numProofs` at the captured Orchard shape, for every consensus-valid action count `n`
 and proof string. -/
@@ -138,11 +139,12 @@ theorem deriveChallenges_at_captured_shape (n : ℕ) (fs : FiatShamir Fp G)
 no two distinct sub-proofs' opening queries share a commitment slot, so the multiopen grouping cannot
 merge across sub-proofs. -/
 theorem commId_disjoint_at_captured_shape (n : ℕ) (vk : VerifyingKey (shape n) Fp G)
+    (instanceCommitment : Fin (shape n).numProofs → ℕ → G)
     (ps : ProofString (shape n) Fp G) (x xInv xNext xLast : Fp) {p p' : Fin (shape n).numProofs}
     (hpp : p ≠ p') :
-    ∀ q ∈ subProofOpeningQueries vk ps x xInv xNext xLast p,
-      ∀ q' ∈ subProofOpeningQueries vk ps x xInv xNext xLast p',
+    ∀ q ∈ subProofOpeningQueries vk instanceCommitment ps x xInv xNext xLast p,
+      ∀ q' ∈ subProofOpeningQueries vk instanceCommitment ps x xInv xNext xLast p',
         q.commId ≠ q'.commId :=
-  subProofOpeningQueries_commId_disjoint vk ps x xInv xNext xLast hpp
+  subProofOpeningQueries_commId_disjoint vk instanceCommitment ps x xInv xNext xLast hpp
 
 end Zcash.Snark.FixtureMax

@@ -73,11 +73,13 @@ structure Config where
 
 /-- `window_pow[k] = (0..k).fold(Const 1, |acc,_| acc * window)` — the exact Rust AST: `1`,
 `1·w`, `(1·w)·w`, …. -/
+@[selector_free]
 def windowPow (word : Expression Fp Query) (k : ℕ) : Expression Fp Query :=
   (List.range k).foldl (fun acc _ => acc * word) (Expression.const 1)
 
 /-- The interpolated `x_p`: fold from `Const 0`, `acc + window_pow[k] · lagrange_coeffs[k]` — the
 8-iteration fold written out (identical AST; keeps the eval bridge fold-free). -/
+@[selector_free]
 def interpolatedX (cfg : Config) (word : Expression Fp Query) : Expression Fp Query :=
   Expression.const 0
     + windowPow word 0 * queryFixed (cfg.lagrangeCoeffs 0)
@@ -93,6 +95,7 @@ def interpolatedX (cfg : Config) (word : Expression Fp Query) : Expression Fp Qu
 `x_p`/`y_p` on the add config's columns at `cur`, `u` at `cur`, `fixed_z` and the 8 Lagrange
 columns as rotation-0 fixed queries. Used by BOTH the running-sum coords gate (word = `z_cur −
 z_next·8`) and the full-width gate (word = the raw `window` query). -/
+@[selector_free]
 def coordsCheck (cfg : Config) (word : Expression Fp Query) :
     List (String × Expression Fp Query) :=
   let yP : Expression Fp Query := queryAdvice cfg.addConfig.yP 0
@@ -110,14 +113,21 @@ def coordsCheck (cfg : Config) (word : Expression Fp Query) :
 /-- The "Running sum coordinates check" gate, registered on the running sum's `q_range_check`
 selector. The window value is derived: `word = z_cur − z_next·8` (constant scale on the
 right). -/
-def coordsGate (cfg : Config) : Gate Fp where
-  name := "Running sum coordinates check"
-  selector := cfg.runningSumConfig.qRangeCheck
-  constraints :=
+def coordsGate (cfg : Config) : Gate Fp :=
+  -- window cur/next first (word derivation), then `coords_check`'s atoms (y_p, x_p, the
+  -- fixed `z`, u) and finally the eight Lagrange-coeff fixed queries from `interpolated_x`.
+  Gate.withSelector "Running sum coordinates check" cfg.runningSumConfig.qRangeCheck
+    [ queryAdvice cfg.window 0, queryAdvice cfg.window 1,
+      queryAdvice cfg.addConfig.yP 0, queryAdvice cfg.addConfig.xP 0,
+      queryFixed cfg.fixedZ, queryAdvice cfg.u 0,
+      queryFixed (cfg.lagrangeCoeffs 0), queryFixed (cfg.lagrangeCoeffs 1),
+      queryFixed (cfg.lagrangeCoeffs 2), queryFixed (cfg.lagrangeCoeffs 3),
+      queryFixed (cfg.lagrangeCoeffs 4), queryFixed (cfg.lagrangeCoeffs 5),
+      queryFixed (cfg.lagrangeCoeffs 6), queryFixed (cfg.lagrangeCoeffs 7) ] <|
     let zCur : Expression Fp Query := queryAdvice cfg.window 0
     let zNext : Expression Fp Query := queryAdvice cfg.window 1
     let word := zCur - zNext * (((H : ℕ) : Fp) : Expression Fp Query)
-    Constraints.withSelector cfg.runningSumConfig.qRangeCheck (coordsCheck cfg word)
+    coordsCheck cfg word
 
 /-- The `CoordsParams` read off the environment's fixed cells at a given row — what the
 coords gate's queries see. -/
@@ -152,6 +162,64 @@ theorem interpolate_congr_params {p q : CoordsParams Fp}
   unfold Ecc.MulFixed.interpolate
   rw [h0, h1, h2, h3, h4, h5, h6, h7]
 
+def configureProgram (window : Column .advice) (qRunningSum : Selector) :
+    Configure Fp (DecomposeRunningSum.Config × Column .fixed) := do
+  let runningSumConfig ← DecomposeRunningSum.configure 3 qRunningSum window
+  let fixedZ ← fixedColumn
+  return (runningSumConfig, fixedZ)
+
+instance (window : Column .advice) (qRunningSum : Selector) :
+    ElaboratedConfigure (configureProgram window qRunningSum) := by
+  unfold configureProgram
+  infer_instance
+
+def configureResult
+    (lagrangeCoeffs : Fin 8 → Column .fixed)
+    (window u : Column .advice)
+    (addConfig : Add.Config)
+    (addIncompleteConfig : AddIncomplete.Config)
+    (_ : Selector)
+    (value : DecomposeRunningSum.Config × Column .fixed) : Config :=
+  { runningSumConfig := value.1
+    lagrangeCoeffs
+    fixedZ := value.2
+    window
+    u
+    addConfig
+    addIncompleteConfig }
+
+def configureGate
+    (lagrangeCoeffs : Fin 8 → Column .fixed)
+    (window u : Column .advice)
+    (addConfig : Add.Config)
+    (addIncompleteConfig : AddIncomplete.Config)
+    (qRunningSum : Selector)
+    (value : DecomposeRunningSum.Config × Column .fixed) : Gate Fp :=
+  coordsGate (configureResult lagrangeCoeffs window u
+    addConfig addIncompleteConfig qRunningSum value)
+
+def configureTail
+    (lagrangeCoeffs : Fin 8 → Column .fixed)
+    (window u : Column .advice)
+    (addConfig : Add.Config)
+    (addIncompleteConfig : AddIncomplete.Config) :
+    Configure Fp Config := do
+  let qRunningSum ← selector
+  let value ← configureProgram window qRunningSum
+  createGate (configureGate lagrangeCoeffs window u
+    addConfig addIncompleteConfig qRunningSum value)
+  return configureResult lagrangeCoeffs window u
+    addConfig addIncompleteConfig qRunningSum value
+
+instance (lagrangeCoeffs : Fin 8 → Column .fixed)
+    (window u : Column .advice)
+    (addConfig : Add.Config)
+    (addIncompleteConfig : AddIncomplete.Config) :
+    ElaboratedConfigure
+      (configureTail lagrangeCoeffs window u addConfig addIncompleteConfig) := by
+  unfold configureTail
+  infer_instance
+
 /-- Equality on `window` and `u`, a fresh selector for the running-sum config (whose `configure`
 registers the "range check" gate and re-enables equality on `window` — a dedup no-op), a fresh
 `fixed_z` column, then the coords gate on the same selector. The cross-config column identities
@@ -162,13 +230,14 @@ def configure (lagrangeCoeffs : Fin 8 → Column .fixed) (window u : Column .adv
     Configure Fp Config := do
   enableEquality window
   enableEquality u
-  let qRunningSum ← selector
-  let runningSumConfig ← DecomposeRunningSum.configure 3 qRunningSum window
-  let fixedZ ← fixedColumn
-  let cfg : Config :=
-    { runningSumConfig, lagrangeCoeffs, fixedZ, window, u, addConfig, addIncompleteConfig }
-  createGate (coordsGate cfg)
-  return cfg
+  configureTail lagrangeCoeffs window u addConfig addIncompleteConfig
+
+instance (lagrangeCoeffs : Fin 8 → Column .fixed) (window u : Column .advice)
+    (addConfig : Add.Config) (addIncompleteConfig : AddIncomplete.Config) :
+    ElaboratedConfigure
+      (configure lagrangeCoeffs window u addConfig addIncompleteConfig) := by
+  unfold configure
+  infer_instance
 
 /-! ## Region-relative synthesize pieces
 

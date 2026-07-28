@@ -76,9 +76,10 @@ theorem absorbLookupPermuted_parametric_numProofs {F G : Type*} {numProofs looku
 
 /-- The per-sub-proof opening-query block used by `assembleQueries`. -/
 def subProofOpeningQueries {shape : Shape} {F G : Type*} [Field F] [Inhabited G]
-    (vk : VerifyingKey shape F G) (ps : ProofString shape F G) (x xInv xNext xLast : F)
+    (vk : VerifyingKey shape F G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape F G) (x xInv xNext xLast : F)
     (p : Fin shape.numProofs) : List (VerifierQuery shape.k F G) :=
-  columnQueries vk.omega x (vk.instanceCommitment p) (CommitmentId.instanceCol p)
+  columnQueries vk.omega x (instanceCommitment p) (CommitmentId.instanceCol p)
       vk.instanceQueryLayout (List.ofFn (ps.instanceEvals p))
   ++ columnQueries vk.omega x (finFnG (ps.adviceCommitments p)) (CommitmentId.adviceCol p)
       vk.adviceQueryLayout (List.ofFn (ps.adviceEvals p))
@@ -105,9 +106,10 @@ def CommitmentId.subProofIdx? : CommitmentId → Option ℕ
 
 /-- Every opening query in sub-proof `p`'s block carries a commitment slot tagged with `p`. -/
 theorem commId_subProofIdx_of_mem_subProofOpeningQueries {shape : Shape} {F G : Type*} [Field F]
-    [Inhabited G] (vk : VerifyingKey shape F G) (ps : ProofString shape F G)
+    [Inhabited G] (vk : VerifyingKey shape F G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape F G)
     (x xInv xNext xLast : F) (p : Fin shape.numProofs) :
-    ∀ q ∈ subProofOpeningQueries vk ps x xInv xNext xLast p,
+    ∀ q ∈ subProofOpeningQueries vk instanceCommitment ps x xInv xNext xLast p,
       q.commId.subProofIdx? = some p.val := by
   intro q hq
   simp only [subProofOpeningQueries, columnQueries, permutationQueries, lookupQueries,
@@ -134,24 +136,26 @@ theorem commId_subProofIdx_of_mem_subProofOpeningQueries {shape : Shape} {F G : 
 
 /-- Distinct sub-proofs use disjoint commitment slots, so multiopen grouping cannot merge them. -/
 theorem subProofOpeningQueries_commId_disjoint {shape : Shape} {F G : Type*} [Field F]
-    [Inhabited G] (vk : VerifyingKey shape F G) (ps : ProofString shape F G)
+    [Inhabited G] (vk : VerifyingKey shape F G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape F G)
     (x xInv xNext xLast : F) {p p' : Fin shape.numProofs} (hpp : p ≠ p') :
-    ∀ q ∈ subProofOpeningQueries vk ps x xInv xNext xLast p,
-      ∀ q' ∈ subProofOpeningQueries vk ps x xInv xNext xLast p',
+    ∀ q ∈ subProofOpeningQueries vk instanceCommitment ps x xInv xNext xLast p,
+      ∀ q' ∈ subProofOpeningQueries vk instanceCommitment ps x xInv xNext xLast p',
         q.commId ≠ q'.commId := by
   intro q hq q' hq' heq
   apply hpp
   apply Fin.val_injective
-  have h1 := commId_subProofIdx_of_mem_subProofOpeningQueries vk ps x xInv xNext xLast p q hq
-  have h2 := commId_subProofIdx_of_mem_subProofOpeningQueries vk ps x xInv xNext xLast p' q' hq'
+  have h1 := commId_subProofIdx_of_mem_subProofOpeningQueries vk instanceCommitment ps x xInv xNext xLast p q hq
+  have h2 := commId_subProofIdx_of_mem_subProofOpeningQueries vk instanceCommitment ps x xInv xNext xLast p' q' hq'
   rw [heq, h2] at h1
   exact (Option.some.inj h1).symm
 
 /-- `assembleQueries` builds all per-sub-proof opening-query blocks by folding over
 `Fin shape.numProofs`, then appends the shared fixed, permutation-common, and vanishing queries. -/
 theorem assembleQueries_parametric_numProofs {shape : Shape} {F G : Type*} [Field F] [Inhabited G]
-    (vk : VerifyingKey shape F G) (ps : ProofString shape F G) (ch : Challenges shape.k F) :
-    assembleQueries vk ps ch =
+    (vk : VerifyingKey shape F G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape F G) (ch : Challenges shape.k F) :
+    assembleQueries vk instanceCommitment ps ch =
       let x := ch.x
       let xn := x ^ vk.n
       let xNext := rotateOmega vk.omega x 1
@@ -162,7 +166,7 @@ theorem assembleQueries_parametric_numProofs {shape : Shape} {F G : Type*} [Fiel
       let eHEval := expectedHEval exprs ch.y xn
       let hComm := vanishingHCommitment shape.k xn (List.ofFn ps.hPieces)
       let perProof := subProofBlocks (fun p : Fin shape.numProofs =>
-        subProofOpeningQueries vk ps x xInv xNext xLast p)
+        subProofOpeningQueries vk instanceCommitment ps x xInv xNext xLast p)
       let fixedQ := columnQueries vk.omega x vk.fixedCommitment CommitmentId.fixedCol
         vk.fixedQueryLayout (List.ofFn ps.fixedEvals)
       let permCommonQ := permutationCommonQueries x CommitmentId.permCommon

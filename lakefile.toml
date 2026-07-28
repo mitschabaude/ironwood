@@ -1,7 +1,7 @@
 name = "Zcash"
 version = "0.1.0"
 keywords = ["cryptography", "math", "protocols"]
-defaultTargets = ["Zcash", "FixtureCheck"]
+defaultTargets = ["Zcash", "FixtureCheck", "CircuitCheck"]
 
 [leanOptions]
 pp.unicode.fun = true # pretty-prints `fun a ↦ b`
@@ -10,12 +10,12 @@ autoImplicit = false
 [[require]]
 name = "Clean"
 git = "https://github.com/Verified-zkEVM/clean"
-rev = "fca63dc777ca9de7f533a50196cdd1357d569f4f"
+rev = "d196ac9e"
 
 [[require]]
 name = "CompElliptic"
 git = "https://github.com/daira/CompElliptic"
-rev = "a549e4555b17bbbe3c8d48aa7d5b493912ccfbe9"
+rev = "fd9977340d728b704436894f87f9967f117ad5f7"
 
 # mathlib last, so that its pinned versions of the common transitive dependencies
 # (batteries, aesop, Qq, proofwidgets, ...) take precedence over CompPoly's.
@@ -36,6 +36,22 @@ name = "Zcash"
 # `lake build` (the default targets -- what CI runs) compiles them, so the empirical checks are
 # exercised alongside the parametric verifier obligations in `Zcash`. New modules under `Fixtures/`
 # are picked up by the glob automatically.
+#
+# The deployed Action/Vesta capstone entry extends the same instance-level lane beyond the
+# `Fixtures/` directory. Through its imports it pulls in the verifying-key COMMITMENT certificate
+# chain `Keygen/Certificate`.
 [[lean_lib]]
 name = "FixtureCheck"
-globs = ["Zcash.Snark.Fixtures.+"]
+globs = ["Zcash.Snark.Fixtures.+", "Zcash.Snark.Soundness.Deployed.ActionVesta"]
+
+# The circuit-side VK matching and layout tests: `Zcash/Circuits/Tests/TestVk*` compare the
+# ported `configure`/`synthesize` against the CS and layout fixtures dumped from the actual
+# Rust circuit (see `Zcash/Circuits/Fixtures/`). Like `FixtureCheck`, these are `#eval`-checked
+# empirical bindings kept out of `lake build Zcash`, but compiled by plain `lake build`
+# (what CI runs) so a divergence between the Lean circuit model and the deployed VK fails the
+# build. The glob covers the whole directory, so a newly added test cannot land in no target
+# at all; that also pulls in `BenchFixedBase`, a pure kernel-`decide` benchmark, which is
+# cheap enough at its current size to keep honest alongside the rest.
+[[lean_lib]]
+name = "CircuitCheck"
+globs = ["Zcash.Circuits.Tests.+"]

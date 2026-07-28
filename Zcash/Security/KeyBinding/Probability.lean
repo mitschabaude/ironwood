@@ -13,13 +13,13 @@ This module adds the probabilistic model that turns those counting facts into a 
 bound.
 
 The model samples the combined final `rivk`-derivation oracle `H^*` as one uniform table
-`O : FinalQuery QK SK B F → F`. A uniform table is the same as independent uniform outputs at
+`O : FinalQuery AK NK RIVK QK SK → RIVK`. A uniform table is the same as independent uniform outputs at
 every query — the product structure of the uniform measure. (In Markov-category terms `PMF` is a
 commutative monad, so samples reorder freely; see Fritz [eprint arXiv:1908.07021] and
 `Mathlib.CategoryTheory.MarkovCategory` for the abstract setting.) The three constituent oracles
 are the table's restrictions along the `FinalQuery` constructors (`FinalQuery.eval_restrict`).
 
-The remaining data (`Extract`, the bases, `hfn`, `Hask`, `Hnk`) are fixed parameters. The shift
+The remaining data (the extract maps, the bases, `hfn`, `Hask`, `Hnk`) are fixed parameters. The shift
 `shiftOf` reads only the query and these parameters, never the sampled table — so a shifted read
 of the table at distinct queries is still a uniform pair. (The shift is a deterministic, a.k.a.
 copy-preserving, map in the Markov-category sense.) The pair and union lemmas below are stated
@@ -33,8 +33,8 @@ Results (static model — the query set is fixed before the table is sampled):
 * `finset_shifted_collision_measure_le` — union bound over the `C(q,2)` unordered pairs of a
   query set of size at most `q`: probability at most `q·(q−1)/|F|`.
 * `break_measure_le` — the key-binding capstone: an adversary whose witnesses' derivation
-  queries land in the static set produces a `Break` with probability at most `q·(q−1)/|F|`
-  (ZIP 2005's `ε_kb` at `|F| = r`).
+  queries land in the static set produces a `Break` with probability at most `q·(q−1)/|RIVK|`
+  (ZIP 2005's `ε_kb` as sharpened in zcash/zips#1338; `|RIVK| = r`).
 
 Results (adaptive — a bounded-query machine choosing queries after seeing earlier answers, as
 an `OracleComp` from the Fiat–Shamir layer):
@@ -46,9 +46,15 @@ an `OracleComp` from the Fiat–Shamir layer):
 * `queries_pair_collision_measure_le` — a `Q`-query machine's trace contains a shifted
   ±-colliding pair with probability at most `Q·(Q−1)/|F|`.
 * `break_measure_le_adaptive` — the adaptive capstone, for a machine that queries its output
-  witnesses' derivation inputs: `Q·(Q−1)/|F|` (ZIP 2005's accounting).
+  witnesses' derivation inputs: `Q·(Q−1)/|RIVK|` (ZIP 2005's accounting).
 * `break_measure_le_of_queryBound` — hypothesis-free: any `Q`-query machine, via
-  `OracleComp.completing` appending the four derivation queries: `(Q+4)·(Q+3)/|F|`.
+  `OracleComp.completing` appending the four derivation queries: `(Q+4)·(Q+3)/|RIVK|`.
+* `uniform_triple_eval` — the triple↔table transport: the three derivation oracles drawn
+  independently and uniformly assemble (`FinalQuery.eval`) into exactly the uniform whole
+  table.
+* `break_measure_le_mixture` / `break_measure_le_product` — the bound over the full
+  probability space: adversary private randomness (any distribution) and the five oracle
+  tables drawn independently, the tables uniformly; same `(Q+4)·(Q+3)/|RIVK|` bound.
 
 The remaining modelling steps toward the full ZIP 2005 key-binding theorem are tracked in
 issue #68.
@@ -59,12 +65,12 @@ namespace Zcash.Security.KeyBinding
 open Finset Zcash.Security.RandomOracle Zcash.Security.Birthday Zcash.Snark
 open scoped ENNReal
 
-variable {G F B SK QK : Type*}
+variable {G F IVK AK NK RIVK ASK QK SK : Type*}
 
 /-! ## Finiteness of the query space -/
 
 /-- `FinalQuery` as the sum of its constructors' data. -/
-def finalQueryEquiv : FinalQuery QK SK B F ≃ (QK × B × B) ⊕ SK ⊕ (F × B × B) where
+def finalQueryEquiv : FinalQuery AK NK RIVK QK SK ≃ (QK × AK × NK) ⊕ SK ⊕ (RIVK × AK × NK) where
   toFun
     | .ext qk ak nk => .inl (qk, ak, nk)
     | .legacy sk => .inr (.inl sk)
@@ -76,13 +82,13 @@ def finalQueryEquiv : FinalQuery QK SK B F ≃ (QK × B × B) ⊕ SK ⊕ (F × B
   left_inv q := by cases q <;> rfl
   right_inv x := by rcases x with ⟨qk, ak, nk⟩ | sk | ⟨rivk_ext, ak, nk⟩ <;> rfl
 
-instance [Fintype QK] [Fintype SK] [Fintype B] [Fintype F] :
-    Fintype (FinalQuery QK SK B F) :=
+instance [Fintype AK] [Fintype NK] [Fintype RIVK] [Fintype QK] [Fintype SK] :
+    Fintype (FinalQuery AK NK RIVK QK SK) :=
   Fintype.ofEquiv _ finalQueryEquiv.symm
 
 /-- Assembling the combined final oracle from a table's constructor restrictions gives back the
 table. -/
-theorem eval_restrict (O : FinalQuery QK SK B F → F) :
+theorem eval_restrict (O : FinalQuery AK NK RIVK QK SK → RIVK) :
     FinalQuery.eval (fun sk => O (.legacy sk)) (fun qk ak nk => O (.ext qk ak nk))
       (fun rivk_ext ak nk => O (.int rivk_ext ak nk)) = O := by
   funext q; cases q <;> rfl
@@ -216,8 +222,9 @@ whole table. -/
 
 /-- The answers at `t` that would ±-collide with a recorded `(query, answer)` pair: two
 candidate values per pair, one per sign. A list representing the step's *bad set* (only
-membership matters, but it is more convenient to use the list length `2·|σ|` to bound the
-set's cardinality; coinciding candidates only slacken the bound). -/
+membership matters, but the list length `2·|σ|` is a convenient bound on the set's
+cardinality; coinciding candidates merely leave the inequality slack, they do not
+invalidate it). -/
 def badList (s : Q → F) (σ : List (Q × F)) (t : Q) : List F :=
   σ.map (fun p => s p.1 + p.2 - s t) ++ σ.map (fun p => -(s p.1 + p.2) - s t)
 
@@ -497,30 +504,79 @@ theorem toOuterMeasure_bind_le {α β : Type*} (p : PMF α) (f : α → PMF β) 
       ≤ ∑' a, p a * ε := ENNReal.tsum_le_tsum fun a => mul_le_mul_right (h a) _
     _ = ε := by rw [ENNReal.tsum_mul_right, PMF.tsum_coe, one_mul]
 
+
+/-! ## The derivation oracles as independent draws -/
+
+section Transport
+
+variable [Field RIVK] [Fintype AK] [Fintype NK] [Fintype RIVK] [Fintype QK] [Fintype SK]
+variable [DecidableEq AK] [DecidableEq NK] [DecidableEq RIVK] [DecidableEq QK] [DecidableEq SK]
+
+/-- Drawing the coordinates independently and uniformly is the uniform draw on the product. -/
+theorem uniformOfFintype_prod {α β : Type*} [Fintype α] [Nonempty α] [Fintype β] [Nonempty β] :
+    PMF.uniformOfFintype (α × β)
+      = (PMF.uniformOfFintype α).bind fun a => (PMF.uniformOfFintype β).map (Prod.mk a) := by
+  refine PMF.ext fun x => ?_
+  rw [PMF.bind_apply, tsum_eq_single x.1 fun a ha => ?_]
+  · rw [PMF.map_apply, tsum_eq_single x.2 fun b hb => ?_]
+    · simp only [Prod.mk.eta, if_pos, PMF.uniformOfFintype_apply, Fintype.card_prod,
+        Nat.cast_mul]
+      rw [ENNReal.mul_inv (Or.inr (ENNReal.natCast_ne_top _))
+        (Or.inl (ENNReal.natCast_ne_top _))]
+    · exact if_neg fun h => hb (congrArg Prod.snd h).symm
+  · rw [PMF.map_apply, ENNReal.tsum_eq_zero.mpr fun b => if_neg fun h =>
+      ha (congrArg Prod.fst h).symm, mul_zero]
+
+/-- The three final `rivk`-derivation oracles assemble bijectively into whole tables
+(`FinalQuery.eval`); the inverse is restriction along the constructors. -/
+def evalEquiv :
+    ((SK → RIVK) × (QK → AK → NK → RIVK) × (RIVK → AK → NK → RIVK))
+      ≃ (FinalQuery AK NK RIVK QK SK → RIVK) where
+  toFun H := FinalQuery.eval H.1 H.2.1 H.2.2
+  invFun O := (fun sk => O (.legacy sk), fun qk ak nk => O (.ext qk ak nk),
+    fun rivk_ext ak nk => O (.int rivk_ext ak nk))
+  left_inv _H := rfl
+  right_inv O := eval_restrict O
+
+/-- **Triple↔table uniformity transport**, as a stated PMF equality: drawing the three final
+`rivk`-derivation oracles independently and uniformly and combining them with
+`FinalQuery.eval` is the uniform whole-table draw. -/
+theorem uniform_triple_eval :
+    ((PMF.uniformOfFintype (SK → RIVK)).bind fun Hleg =>
+        (PMF.uniformOfFintype (QK → AK → NK → RIVK)).bind fun Hext =>
+          (PMF.uniformOfFintype (RIVK → AK → NK → RIVK)).map fun Hint =>
+            FinalQuery.eval Hleg Hext Hint)
+      = PMF.uniformOfFintype (FinalQuery AK NK RIVK QK SK → RIVK) := by
+  rw [← map_uniformOfFintype_equiv (evalEquiv (QK := QK) (SK := SK) (AK := AK) (NK := NK)
+    (RIVK := RIVK))]
+  simp only [uniformOfFintype_prod, PMF.map_bind, PMF.map_comp]
+  rfl
+
+end Transport
+
 /-! ## The key-binding capstone -/
 
 section Capstone
 
-variable [AddCommGroup G] [Field F] [Field B] [Module F G] [NoZeroSMulDivisors F G]
-variable [Fintype QK] [Fintype SK] [Fintype B] [Fintype F]
-variable [DecidableEq QK] [DecidableEq SK] [DecidableEq B] [DecidableEq F]
+variable [AddCommGroup G] [Field IVK] [Field RIVK] [Module RIVK G] [NoZeroSMulDivisors RIVK G]
+variable [SMul ASK G]
+variable [Fintype AK] [Fintype NK] [Fintype RIVK] [Fintype QK] [Fintype SK]
+variable [DecidableEq AK] [DecidableEq NK] [DecidableEq RIVK] [DecidableEq QK] [DecidableEq SK]
 
-omit [Fintype QK] [Fintype SK] [Fintype B] [Fintype F] in
+omit [Fintype AK] [Fintype NK] [Fintype RIVK] [Fintype QK] [Fintype SK] in
 /-- The queries at which `CollisionUpToSign.ofBreak` exhibits its collision are the witnesses'
 derivation queries: the `rivk_ext`-derivation pair in the residual case, the final-query pair
 otherwise. Stated over any `c` equal to the computed collision (`hc`), so that a consumer's
 `set c := CollisionUpToSign.ofBreak ... with hc` supplies `hc` directly. -/
-theorem ofBreak_queries {Extract : G → B} {S : G} {hfn : B → B → F} {Ggen : G}
-    {hExt : ∀ P R : G, Extract P = Extract R ↔ P =± R} {hS : S ≠ 0}
-    {Hask : SK → F} {Hnk : SK → B} {Hrivk_legacy : SK → F}
-    {Hrivk_ext : QK → B → B → F} {Hrivk_int : F → B → B → F}
-    {w₁ w₂ : Witness G F B SK QK}
-    {hbrk : Break Extract S hfn Ggen Hask Hnk Hrivk_legacy Hrivk_ext Hrivk_int w₁ w₂}
+theorem ofBreak_queries {Extract : Extractor G IVK AK} {S : G} {hfn : AK → NK → RIVK}
+    {Ggen : G} {hS : S ≠ 0}
+    {H : Oracles AK NK RIVK ASK QK SK}
+    {w₁ w₂ : Witness G IVK AK NK RIVK QK SK}
+    {hbrk : Break Extract S hfn Ggen H w₁ w₂}
     {c : RandomOracle.CollisionUpToSign
-      (shiftedFinalOracle Extract Ggen hfn Hask Hnk Hrivk_legacy Hrivk_ext Hrivk_int
+      (shiftedFinalOracle Extract Ggen hfn H
         (QK := QK) (SK := SK))}
-    (hc : c = CollisionUpToSign.ofBreak Extract S hfn Ggen hExt hS Hask Hnk Hrivk_legacy
-      Hrivk_ext Hrivk_int hbrk) :
+    (hc : c = CollisionUpToSign.ofBreak Extract S hfn Ggen hS H hbrk) :
     (c.q₁ = extQueryOf Extract w₁ ∧ c.q₂ = extQueryOf Extract w₂) ∨
       (c.q₁ = finalQueryOf Extract w₁ ∧ c.q₂ = finalQueryOf Extract w₂) := by
   subst hc
@@ -532,26 +588,26 @@ theorem ofBreak_queries {Extract : G → B} {S : G} {hfn : B → B → F} {Ggen 
 /-- **Non-adaptive key-binding birthday bound.** Sample the combined final oracle as a uniform
 table. An adversary —here, any pair of witness choices depending on the whole table— whose
 witnesses' derivation queries lie in a set `Qs` of at most `q` queries *fixed in advance*,
-produces a key-binding `Break` with probability at most `q·(q−1)/|F|`. This is ZIP 2005's
-`ε_kb` at `|F| = r`. -/
-theorem break_measure_le (Extract : G → B) (S : G) (hfn : B → B → F) (Ggen : G)
-    (hExt : ∀ P R : G, Extract P = Extract R ↔ P =± R) (hS : S ≠ 0)
-    (Hask : SK → F) (Hnk : SK → B)
-    (w₁ w₂ : (FinalQuery QK SK B F → F) → Witness G F B SK QK)
-    (Qs : Finset (FinalQuery QK SK B F)) {q : ℕ} (hq : Qs.card ≤ q)
+produces a key-binding `Break` with probability at most `q·(q−1)/|RIVK|`. This is ZIP 2005's
+`ε_kb` as sharpened in zcash/zips#1338, at `|RIVK| = r`. -/
+theorem break_measure_le (Extract : Extractor G IVK AK) (S : G) (hfn : AK → NK → RIVK)
+    (Ggen : G) (hS : S ≠ 0)
+    (Hask : SK → ASK) (Hnk : SK → NK)
+    (w₁ w₂ : (FinalQuery AK NK RIVK QK SK → RIVK) → Witness G IVK AK NK RIVK QK SK)
+    (Qs : Finset (FinalQuery AK NK RIVK QK SK)) {q : ℕ} (hq : Qs.card ≤ q)
     (hqueries : ∀ O, finalQueryOf Extract (w₁ O) ∈ Qs ∧ finalQueryOf Extract (w₂ O) ∈ Qs ∧
       extQueryOf Extract (w₁ O) ∈ Qs ∧ extQueryOf Extract (w₂ O) ∈ Qs) :
-    (PMF.uniformOfFintype (FinalQuery QK SK B F → F)).toOuterMeasure
-        {O : FinalQuery QK SK B F → F |
-          Break Extract S hfn Ggen Hask Hnk
-            (fun sk => O (.legacy sk)) (fun qk ak nk => O (.ext qk ak nk))
-            (fun rivk_ext ak nk => O (.int rivk_ext ak nk)) (w₁ O) (w₂ O)}
-      ≤ (q * (q - 1) : ℕ) / Fintype.card F := by
+    (PMF.uniformOfFintype (FinalQuery AK NK RIVK QK SK → RIVK)).toOuterMeasure
+        {O : FinalQuery AK NK RIVK QK SK → RIVK |
+          Break Extract S hfn Ggen
+            ⟨Hask, Hnk, fun sk => O (.legacy sk), fun qk ak nk => O (.ext qk ak nk),
+              fun rivk_ext ak nk => O (.int rivk_ext ak nk)⟩ (w₁ O) (w₂ O)}
+      ≤ (q * (q - 1) : ℕ) / Fintype.card RIVK := by
   refine le_trans (MeasureTheory.measure_mono ?_)
     (finset_shifted_collision_measure_le (shiftOf Extract Ggen hfn Hask Hnk) Qs hq)
   intro O hO
   obtain ⟨hf₁, hf₂, he₁, he₂⟩ := hqueries O
-  set c := CollisionUpToSign.ofBreak Extract S hfn Ggen hExt hS Hask Hnk _ _ _ hO with hc
+  set c := CollisionUpToSign.ofBreak Extract S hfn Ggen hS _ hO with hc
   have hq12 := ofBreak_queries hc
   have hpm : shiftOf Extract Ggen hfn Hask Hnk c.q₁ + O c.q₁
       =± shiftOf Extract Ggen hfn Hask Hnk c.q₂ + O c.q₂ := by
@@ -566,31 +622,33 @@ theorem break_measure_le (Extract : G → B) (S : G) (hfn : B → B → F) (Ggen
 /-- The derivation queries of an output witness pair: the final and `rivk_ext`-derivation
 queries of both witnesses — the four points at which `CollisionUpToSign.ofBreak` can exhibit
 its collision. -/
-def derivQueries (Extract : G → B)
-    (w : Witness G F B SK QK × Witness G F B SK QK) : Fin 4 → FinalQuery QK SK B F :=
+def derivQueries (Extract : Extractor G IVK AK)
+    (w : Witness G IVK AK NK RIVK QK SK × Witness G IVK AK NK RIVK QK SK) : Fin 4 → FinalQuery AK NK RIVK QK SK :=
   ![finalQueryOf Extract w.1, finalQueryOf Extract w.2,
     extQueryOf Extract w.1, extQueryOf Extract w.2]
 
 /-- **Adaptive key-binding bound (ZIP 2005 accounting).** An `n`-query machine that queries its
 output witnesses' derivation inputs produces a key-binding `Break` with probability at most
-`n·(n−1)/|F|` — ZIP 2005's `ε_kb` at `|F| = r`, with the adversary's queries chosen adaptively. -/
-theorem break_measure_le_adaptive (Extract : G → B) (S : G) (hfn : B → B → F) (Ggen : G)
-    (hExt : ∀ P R : G, Extract P = Extract R ↔ P =± R) (hS : S ≠ 0)
-    (Hask : SK → F) (Hnk : SK → B)
-    {A : OracleComp (FinalQuery QK SK B F) F (Witness G F B SK QK × Witness G F B SK QK)}
+`n·(n−1)/|RIVK|` — ZIP 2005's `ε_kb` (as sharpened in zcash/zips#1338) at `|RIVK| = r`, with
+the adversary's queries chosen adaptively. -/
+theorem break_measure_le_adaptive (Extract : Extractor G IVK AK) (S : G) (hfn : AK → NK → RIVK)
+    (Ggen : G) (hS : S ≠ 0)
+    (Hask : SK → ASK) (Hnk : SK → NK)
+    {A : OracleComp (FinalQuery AK NK RIVK QK SK) RIVK
+      (Witness G IVK AK NK RIVK QK SK × Witness G IVK AK NK RIVK QK SK)}
     {n : ℕ} (hQ : A.QueryBound n)
-    (hqueries : ∀ (O : FinalQuery QK SK B F → F) (i : Fin 4),
+    (hqueries : ∀ (O : FinalQuery AK NK RIVK QK SK → RIVK) (i : Fin 4),
       derivQueries Extract (A.run O) i ∈ A.queries O) :
-    (PMF.uniformOfFintype (FinalQuery QK SK B F → F)).toOuterMeasure
-        {O : FinalQuery QK SK B F → F |
-          Break Extract S hfn Ggen Hask Hnk
-            (fun sk => O (.legacy sk)) (fun qk ak nk => O (.ext qk ak nk))
-            (fun rivk_ext ak nk => O (.int rivk_ext ak nk)) (A.run O).1 (A.run O).2}
-      ≤ (n * (n - 1) : ℕ) / Fintype.card F := by
+    (PMF.uniformOfFintype (FinalQuery AK NK RIVK QK SK → RIVK)).toOuterMeasure
+        {O : FinalQuery AK NK RIVK QK SK → RIVK |
+          Break Extract S hfn Ggen
+            ⟨Hask, Hnk, fun sk => O (.legacy sk), fun qk ak nk => O (.ext qk ak nk),
+              fun rivk_ext ak nk => O (.int rivk_ext ak nk)⟩ (A.run O).1 (A.run O).2}
+      ≤ (n * (n - 1) : ℕ) / Fintype.card RIVK := by
   refine le_trans (MeasureTheory.measure_mono ?_)
     (queries_pair_collision_measure_le (shiftOf Extract Ggen hfn Hask Hnk) hQ)
   intro O hO
-  set c := CollisionUpToSign.ofBreak Extract S hfn Ggen hExt hS Hask Hnk _ _ _ hO with hc
+  set c := CollisionUpToSign.ofBreak Extract S hfn Ggen hS _ hO with hc
   have hq12 := ofBreak_queries hc
   have hpm : shiftOf Extract Ggen hfn Hask Hnk c.q₁ + O c.q₁
       =± shiftOf Extract Ggen hfn Hask Hnk c.q₂ + O c.q₂ := by
@@ -608,25 +666,26 @@ theorem break_measure_le_adaptive (Extract : G → B) (S : G) (hfn : B → B →
 key-binding `Break` with probability at most `(n+4)·(n+3)/|F|`: complete the machine with its
 output witnesses' four derivation queries (`OracleComp.completing`) and apply the adaptive
 bound at budget `n + 4`. -/
-theorem break_measure_le_of_queryBound (Extract : G → B) (S : G) (hfn : B → B → F) (Ggen : G)
-    (hExt : ∀ P R : G, Extract P = Extract R ↔ P =± R) (hS : S ≠ 0)
-    (Hask : SK → F) (Hnk : SK → B)
-    {A : OracleComp (FinalQuery QK SK B F) F (Witness G F B SK QK × Witness G F B SK QK)}
+theorem break_measure_le_of_queryBound (Extract : Extractor G IVK AK) (S : G) (hfn : AK → NK → RIVK)
+    (Ggen : G) (hS : S ≠ 0)
+    (Hask : SK → ASK) (Hnk : SK → NK)
+    {A : OracleComp (FinalQuery AK NK RIVK QK SK) RIVK
+      (Witness G IVK AK NK RIVK QK SK × Witness G IVK AK NK RIVK QK SK)}
     {n : ℕ} (hQ : A.QueryBound n) :
-    (PMF.uniformOfFintype (FinalQuery QK SK B F → F)).toOuterMeasure
-        {O : FinalQuery QK SK B F → F |
-          Break Extract S hfn Ggen Hask Hnk
-            (fun sk => O (.legacy sk)) (fun qk ak nk => O (.ext qk ak nk))
-            (fun rivk_ext ak nk => O (.int rivk_ext ak nk)) (A.run O).1 (A.run O).2}
-      ≤ ((n + 4) * (n + 3) : ℕ) / Fintype.card F := by
-  have hqueries : ∀ (O : FinalQuery QK SK B F → F) (i : Fin 4),
+    (PMF.uniformOfFintype (FinalQuery AK NK RIVK QK SK → RIVK)).toOuterMeasure
+        {O : FinalQuery AK NK RIVK QK SK → RIVK |
+          Break Extract S hfn Ggen
+            ⟨Hask, Hnk, fun sk => O (.legacy sk), fun qk ak nk => O (.ext qk ak nk),
+              fun rivk_ext ak nk => O (.int rivk_ext ak nk)⟩ (A.run O).1 (A.run O).2}
+      ≤ ((n + 4) * (n + 3) : ℕ) / Fintype.card RIVK := by
+  have hqueries : ∀ (O : FinalQuery AK NK RIVK QK SK → RIVK) (i : Fin 4),
       derivQueries Extract ((A.completing (derivQueries Extract)).run O) i
         ∈ (A.completing (derivQueries Extract)).queries O := by
     intro O i
     rw [OracleComp.run_completing, OracleComp.completing, OracleComp.queries_bind,
       OracleComp.queries_queryList]
     exact List.mem_append.2 (Or.inr (List.mem_ofFn.2 ⟨i, rfl⟩))
-  have hbound := break_measure_le_adaptive Extract S hfn Ggen hExt hS Hask Hnk
+  have hbound := break_measure_le_adaptive Extract S hfn Ggen hS Hask Hnk
     (OracleComp.queryBound_completing (derivQueries Extract) hQ) hqueries
   have h43 : n + 4 - 1 = n + 3 := by omega
   simpa [OracleComp.run_completing, h43] using hbound
@@ -637,22 +696,65 @@ pointwise capstone conditions on the adversary's private randomness and the `H^a
 tables; this lifts it to the mixture. The index `ι` bundles everything the pointwise bound
 fixes — private coins and both outer tables, under any joint distribution `p` — and the
 bound is uniform in the slice, so averaging preserves it. -/
-theorem break_measure_le_mixture {ι : Type*} (Extract : G → B) (S : G) (hfn : B → B → F)
-    (Ggen : G) (hExt : ∀ P R : G, Extract P = Extract R ↔ P =± R) (hS : S ≠ 0)
-    (p : PMF ι) (Hask : ι → SK → F) (Hnk : ι → SK → B)
-    {A : ι → OracleComp (FinalQuery QK SK B F) F (Witness G F B SK QK × Witness G F B SK QK)}
+theorem break_measure_le_mixture {ι : Type*} (Extract : Extractor G IVK AK) (S : G) (hfn : AK → NK → RIVK)
+    (Ggen : G) (hS : S ≠ 0)
+    (p : PMF ι) (Hask : ι → SK → ASK) (Hnk : ι → SK → NK)
+    {A : ι → OracleComp (FinalQuery AK NK RIVK QK SK) RIVK
+      (Witness G IVK AK NK RIVK QK SK × Witness G IVK AK NK RIVK QK SK)}
     {n : ℕ} (hQ : ∀ i, (A i).QueryBound n) :
-    ((p.bind fun i => (PMF.uniformOfFintype (FinalQuery QK SK B F → F)).map
+    ((p.bind fun i => (PMF.uniformOfFintype (FinalQuery AK NK RIVK QK SK → RIVK)).map
         (Prod.mk i))).toOuterMeasure
-        {x : ι × (FinalQuery QK SK B F → F) |
-          Break Extract S hfn Ggen (Hask x.1) (Hnk x.1)
-            (fun sk => x.2 (.legacy sk)) (fun qk ak nk => x.2 (.ext qk ak nk))
-            (fun rivk_ext ak nk => x.2 (.int rivk_ext ak nk))
+        {x : ι × (FinalQuery AK NK RIVK QK SK → RIVK) |
+          Break Extract S hfn Ggen
+            ⟨(Hask x.1), (Hnk x.1), fun sk => x.2 (.legacy sk), fun qk ak nk => x.2 (.ext qk ak nk),
+              fun rivk_ext ak nk => x.2 (.int rivk_ext ak nk)⟩
             ((A x.1).run x.2).1 ((A x.1).run x.2).2}
-      ≤ ((n + 4) * (n + 3) : ℕ) / Fintype.card F := by
+      ≤ ((n + 4) * (n + 3) : ℕ) / Fintype.card RIVK := by
   refine toOuterMeasure_bind_le _ _ _ fun i => ?_
   rw [PMF.toOuterMeasure_map_apply]
-  exact break_measure_le_of_queryBound Extract S hfn Ggen hExt hS (Hask i) (Hnk i) (hQ i)
+  exact break_measure_le_of_queryBound Extract S hfn Ggen hS (Hask i) (Hnk i) (hQ i)
+
+
+/-- **Adaptive key-binding bound over five independent oracle tables** — ZIP 2005's
+probability space in full: the adversary's private randomness (any distribution `p`) and
+the five oracle tables — `H^ask`, `H^nk`, and the three final `rivk`-derivation oracles —
+drawn independently, the tables uniformly. The machine receives the sampled `H^ask`/`H^nk`
+tables — dominating any query strategy against those oracles, with the query budget counting
+only rivk-oracle queries — and runs on the combined table; the bound is the hypothesis-free
+`(n+4)·(n+3)/|RIVK|`. -/
+theorem break_measure_le_product {ι : Type*} [Fintype ASK] [Nonempty NK] [Nonempty ASK]
+    (Extract : Extractor G IVK AK) (S : G) (hfn : AK → NK → RIVK)
+    (Ggen : G) (hS : S ≠ 0)
+    (p : PMF ι)
+    {A : ι → (SK → ASK) → (SK → NK) → OracleComp (FinalQuery AK NK RIVK QK SK) RIVK
+      (Witness G IVK AK NK RIVK QK SK × Witness G IVK AK NK RIVK QK SK)}
+    {n : ℕ} (hQ : ∀ i Hask Hnk, (A i Hask Hnk).QueryBound n) :
+    ((p.bind fun i => (PMF.uniformOfFintype (SK → ASK)).bind fun Hask =>
+        (PMF.uniformOfFintype (SK → NK)).bind fun Hnk =>
+          (PMF.uniformOfFintype (SK → RIVK)).bind fun Hleg =>
+            (PMF.uniformOfFintype (QK → AK → NK → RIVK)).bind fun Hext =>
+              (PMF.uniformOfFintype (RIVK → AK → NK → RIVK)).map fun Hint =>
+                (i, Hask, Hnk, FinalQuery.eval Hleg Hext Hint))).toOuterMeasure
+        (setOf fun (i, Hask, Hnk, O) =>
+          Break Extract S hfn Ggen
+            ⟨Hask, Hnk, fun sk => O (.legacy sk), fun qk ak nk => O (.ext qk ak nk),
+              fun rivk_ext ak nk => O (.int rivk_ext ak nk)⟩
+            ((A i Hask Hnk).run O).1 ((A i Hask Hnk).run O).2)
+      ≤ ((n + 4) * (n + 3) : ℕ) / Fintype.card RIVK := by
+  refine toOuterMeasure_bind_le _ _ _ fun i => ?_
+  refine toOuterMeasure_bind_le _ _ _ fun Hask => ?_
+  refine toOuterMeasure_bind_le _ _ _ fun Hnk => ?_
+  have htr : ((PMF.uniformOfFintype (SK → RIVK)).bind fun Hleg =>
+        (PMF.uniformOfFintype (QK → AK → NK → RIVK)).bind fun Hext =>
+          (PMF.uniformOfFintype (RIVK → AK → NK → RIVK)).map fun Hint =>
+            (i, Hask, Hnk, FinalQuery.eval Hleg Hext Hint))
+      = (PMF.uniformOfFintype (FinalQuery AK NK RIVK QK SK → RIVK)).map fun O =>
+          (i, Hask, Hnk, O) := by
+    rw [← uniform_triple_eval]
+    simp only [PMF.map_bind, PMF.map_comp]
+    rfl
+  rw [htr, PMF.toOuterMeasure_map_apply]
+  exact break_measure_le_of_queryBound Extract S hfn Ggen hS Hask Hnk (hQ i Hask Hnk)
 
 end Capstone
 

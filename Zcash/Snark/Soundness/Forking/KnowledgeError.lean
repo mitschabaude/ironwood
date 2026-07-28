@@ -48,7 +48,6 @@ this concrete fraction is what lets the deployed soundness floor be read off dir
 theorem kerr_div_card [Fintype α] [Nonempty α] (d : ℕ) :
     (kerr (Fintype.card α) d : ℝ≥0∞) / Fintype.card (Fin d → α)
       = 3 * d / Fintype.card α := by
-  classical
   have hcard : Fintype.card (Fin d → α) = Fintype.card α ^ d := by
     rw [Fintype.card_fun, Fintype.card_fin]
   have hpos : 0 < Fintype.card α := Fintype.card_pos

@@ -1,5 +1,5 @@
 import Mathlib
-import Zcash.Snark.Core.Field
+import Zcash.Arithmetic
 
 /-!
 # The batch random-linear-combination soundness bound
@@ -23,6 +23,8 @@ Requires `[NoZeroSMulDivisors Fp G]` — the prime-order property of the verifie
 -/
 
 namespace Zcash.Snark
+
+open Zcash.Arithmetic (card_Fp scalarFieldOrder)
 
 open Finset
 

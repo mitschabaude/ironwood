@@ -197,12 +197,13 @@ same expression with its adjusted commitment and concrete coefficients.
 /-- Halo2's deployed IPA verifier equation is the closed form `CF = 0`. -/
 theorem deployedVerifierEq_cf {shape : Shape} [DecidableEq F] [DecidableEq G] [Inhabited G]
     (g : Fin (2 ^ shape.k) → G) (w u : G)
-    (vk : VerifyingKey shape F G) (ps : ProofString shape F G) (ch : Challenges shape.k F) :
-    DeployedIpaVerifierEq g w u vk ps ch ↔
+    (vk : VerifyingKey shape F G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape F G) (ch : Challenges shape.k F) :
+    DeployedIpaVerifierEq g w u vk instanceCommitment ps ch ↔
       CF (List.ofFn ps.ipaRounds) (List.ofFn ch.ipaRound)
           (fun j => g (Fin.cast (congrArg (2 ^ ·) List.length_ofFn) j))
-          (multiopenCommitment g w u vk ps ch
-            + (∑ i, ([-(multiopenValue vk ps ch)].getD i.val 0) • g i) + ch.xi • ps.ipaS)
+          (multiopenCommitment g w u vk instanceCommitment ps ch
+            + (∑ i, ([-(multiopenValue vk instanceCommitment ps ch)].getD i.val 0) • g i) + ch.xi • ps.ipaS)
           ps.ipaC (-ps.ipaC * computeB ch.x3 (List.ofFn ch.ipaRound) * ch.z) u (-ps.ipaF) w = 0 := by
   unfold DeployedIpaVerifierEq CF gPart roundSum multiopenCommitment multiopenValue
   constructor <;> intro h <;> linear_combination (norm := abel) h

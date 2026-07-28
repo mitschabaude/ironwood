@@ -65,7 +65,6 @@ theorem scanRank_insert_erase {n : ℕ} (e : Fin n ≃ F) (M : Finset F) (u : F)
     · exact Or.inl rfl
     · exact Or.inr ha
 
-open Classical in
 /-- Pointwise node accounting in which scan costs are paid only under the gate
 `u₁ ≠ 0 ∧ first extracts` — the event whose probability the pairing argument prices. -/
 theorem recursiveAlgebraicForkFrom_node_runs_le_gated [Fintype F] {d m : ℕ}
@@ -132,7 +131,6 @@ theorem scanCandidateAt_update (t₀ : T) {d : ℕ} (m : ℕ) (hmk : m + (d + 1)
       = scanCandidateAt basis k A prefixes rounds final win decideWin t₀ m hmk O childC u := by
   simp only [scanCandidateAt, Function.update_idem]
 
-open Classical in
 /-- The good set with the reprogramming anchor explicit: blind at the anchor and independent of
 the anchor's table value. -/
 noncomputable def goodChallengesAt (t₀ : T) {d : ℕ} (m : ℕ) (hmk : m + (d + 1) = k)
@@ -141,7 +139,6 @@ noncomputable def goodChallengesAt (t₀ : T) {d : ℕ} (m : ℕ) (hmk : m + (d 
     (scanCandidateAt basis k A prefixes rounds final win decideWin
       t₀ m hmk O childC u).output.isSome)
 
-open Classical in
 theorem goodChallengesAt_fork [Fintype F] {d : ℕ} (m : ℕ) (hmk : m + (d + 1) = k) (O : T → F)
     (childC : F → RecursiveForkCoins F d) :
     goodChallengesAt basis k A prefixes rounds final win decideWin
@@ -151,7 +148,6 @@ theorem goodChallengesAt_fork [Fintype F] {d : ℕ} (m : ℕ) (hmk : m + (d + 1)
   simp [goodChallengesAt, goodChallenges,
     scanCandidateAt_fork basis k A prefixes rounds final win decideWin m hmk O childC]
 
-open Classical in
 theorem goodChallengesAt_update [Fintype F] (t₀ : T) {d : ℕ} (m : ℕ) (hmk : m + (d + 1) = k)
     (O : T → F) (x : F) (childC : F → RecursiveForkCoins F d) :
     goodChallengesAt basis k A prefixes rounds final win decideWin t₀ m hmk
@@ -172,14 +168,12 @@ theorem scanRank_insert_eq_filter {n : ℕ} (e : Fin n ≃ F) (S : Finset F) (u 
   unfold scanRank
   rw [Finset.filter_insert, if_neg (lt_irrefl _)]
 
-open Classical in
 /-- A fixed candidate is low-rank against the punctured good set at most four orders' worth of
 times, summed over punctures and sampling orders. -/
 theorem sum_card_scanRank_erase_lt_le [Fintype F] (G : Finset F) (u : F) :
     ∑ x ∈ G, (Finset.univ.filter (fun order : Fin (Fintype.card F) ≃ F =>
         scanRank order (insert u ((G.erase x).erase u)) u < 2)).card
       ≤ 4 * Fintype.card (Fin (Fintype.card F) ≃ F) := by
-  classical
   -- swap to per-order counting
   have hswap : ∑ x ∈ G, (Finset.univ.filter (fun order : Fin (Fintype.card F) ≃ F =>
       scanRank order (insert u ((G.erase x).erase u)) u < 2)).card

@@ -50,6 +50,7 @@ structure Shape where
   numAdviceQueries : ℕ
   numFixedQueries : ℕ
   numPointSets : ℕ
+deriving DecidableEq, Repr
 
 /-- Per-set permutation product evaluations (halo2 `EvaluatedSet`): the product polynomial `zᵢ` at
 `x` (`eval`) and `ω x` (`nextEval`), plus — for every set except the last — at `ω^{last} x`
@@ -58,6 +59,11 @@ structure PermSetEval (F : Type*) where
   eval : F
   nextEval : F
   lastEval : Option F
+
+/-- Map a permutation set's evaluations along `f` — used to evaluate a polynomial-carrier set at a
+point, turning the polynomial-level constraint terms into the verifier's value-level ones. -/
+def PermSetEval.map {F G : Type*} (f : F → G) (e : PermSetEval F) : PermSetEval G :=
+  { eval := f e.eval, nextEval := f e.nextEval, lastEval := e.lastEval.map f }
 
 /-- Per-lookup evaluations (halo2 lookup `Evaluated`): the product `z` at `x` (`productEval`) and
 `ω x` (`productNextEval`); the permuted input `a'` at `x` (`permutedInputEval`) and `ω⁻¹ x`
@@ -68,6 +74,12 @@ structure LookupEval (F : Type*) where
   permutedInputEval : F
   permutedInputInvEval : F
   permutedTableEval : F
+
+/-- Map a lookup's evaluations along `f`, as `PermSetEval.map`. -/
+def LookupEval.map {F G : Type*} (f : F → G) (e : LookupEval F) : LookupEval G :=
+  { productEval := f e.productEval, productNextEval := f e.productNextEval,
+    permutedInputEval := f e.permutedInputEval, permutedInputInvEval := f e.permutedInputInvEval,
+    permutedTableEval := f e.permutedTableEval }
 
 /-- The proof string, over a field carrier `F` and group carrier `G`, with the fields declared in the
 verifier's read order. Group elements are commitments (Vesta points, `E_q`); field elements are

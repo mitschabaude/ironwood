@@ -29,4 +29,15 @@ structure NontrivialRelation {n : ℕ} (g : Fin n → G) (U W : G) where
   nontrivial : a ≠ 0 ∨ α ≠ 0 ∨ β ≠ 0
   relation : (∑ i, a i • g i) + α • U + β • W = 0
 
+/-- The one-distinguished-generator variant: a nontrivial `F`-linear relation among the
+family `g` and a single distinguished generator `U`.  This is the shape of a Sinsemilla
+discrete-log break (protocol spec Theorem 5.4.4): a relation among the per-chunk generator
+table and the domain point `Q`, produced as data by the escape reduction
+(`Zcash.Security.Ledger.Bridge.relationOfBreakData`). -/
+structure NontrivialRelationOne {n : ℕ} (g : Fin n → G) (U : G) where
+  a : Fin n → F
+  α : F
+  nontrivial : a ≠ 0 ∨ α ≠ 0
+  relation : (∑ i, a i • g i) + α • U = 0
+
 end Zcash

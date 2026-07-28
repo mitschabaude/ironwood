@@ -26,7 +26,7 @@ variable {G : Type*} [AddCommGroup G] [Module Fp G]
 /-- Compute a deployed IPA opening or relation from an algebraic fork certificate.
 
 Erasing the coefficients gives the certificate checked by `DeployedForkValid`. The relation branch
-uses the form expected by the fixed-slot DL reduction. -/
+uses the form expected by the programmed-basis DL reduction. -/
 def deployedAlgebraicForkingRelation [DecidableEq G] [Inhabited G] (urs : URS G)
     (b : Fin (2 ^ urs.k) → Fp) (v ξ z blind : Fp) (aMulti aDep s : Fin (2 ^ urs.k) → Fp)
     (cert : AlgebraicDForkCert (F := Fp) (augmentedBasis urs.g urs.u urs.w) urs.k)
@@ -58,13 +58,12 @@ def deployedAlgebraicForkingRelation_shifted [DecidableEq G] [Inhabited G] (urs 
   | PSum.inr hrel =>
       PSum.inr (AugmentedRelationWitness.toAlgebraicRelationWitness hrel)
 
-/-- Run the deployed certificate and then the fixed-slot DL reduction.
-
-The result is an IPA opening, a DL solution, or proof that the returned relation missed the fixed
-challenge slot. -/
-def deployedAlgebraicForkingFixedSlot [DecidableEq G] [Inhabited G] (urs : URS G)
-    (B : G) (challenge : AugmentedIndex (2 ^ urs.k))
-    (embedding : FixedSlotEmbedding (F := Fp) B (augmentedBasis urs.g urs.u urs.w) challenge)
+/-- Run the deployed certificate, then the programmed-basis DL reduction: an IPA opening, the
+challenge `C`'s discrete log, or proof that the returned relation's component against the
+programming is zero. -/
+def deployedAlgebraicForkingProgrammed [DecidableEq G] [Inhabited G] (urs : URS G)
+    (B C : G)
+    (embedding : ProgrammedBasisEmbedding (F := Fp) B C (augmentedBasis urs.g urs.u urs.w))
     (b : Fin (2 ^ urs.k) → Fp) (v ξ z blind : Fp) (aMulti aDep s : Fin (2 ^ urs.k) → Fp)
     (cert : AlgebraicDForkCert (F := Fp) (augmentedBasis urs.g urs.u urs.w) urs.k)
     (hz : z ≠ 0) (hb0 : b 0 = 1)
@@ -72,10 +71,11 @@ def deployedAlgebraicForkingFixedSlot [DecidableEq G] [Inhabited G] (urs : URS G
     (hvalid : DeployedForkValid urs.g b urs.u urs.w z
       (commit urs aDep + (z * 0) • urs.u + blind • urs.w) cert.toDForkCert) :
     (Σ' a, IpaRelation urs (commit urs aMulti) b (v - ξ * innerProduct s b) a)
-      ⊕' FixedSlotRelationOutcome (F := Fp) B (augmentedBasis urs.g urs.u urs.w) challenge :=
+      ⊕' ProgrammedRelationOutcome (F := Fp) B C (augmentedBasis urs.g urs.u urs.w)
+          embedding.y :=
   match deployedAlgebraicForkingRelation urs b v ξ z blind aMulti aDep s cert hz hb0 hP hvalid with
   | PSum.inl hopen => PSum.inl hopen
-  | PSum.inr hrel => PSum.inr (fixedSlotExtractOrMiss B _ challenge embedding hrel)
+  | PSum.inr hrel => PSum.inr (programmedExtractOrMiss B C embedding hrel)
 
 /-! ## Concrete relation producer for the probability experiment -/
 

@@ -46,6 +46,7 @@ structure Config where
 
 /-- Rust `utilities.rs::range_check(word, range)` (lines 170-174), the exact halo2 AST:
 `(1..range).fold(word, |acc, i| acc * (Constant(i) − word))`. -/
+@[selector_free]
 def rangeCheckExpr (range : ℕ) (word : Expression Fp Query) : Expression Fp Query :=
   ((List.range range).drop 1).foldl
     (fun acc (i : ℕ) => acc * (Expression.const (i : Fp) - word)) word
@@ -108,15 +109,13 @@ theorem inRange_iff_exists_lt (range : ℕ) (hrange : 0 < range) (word : Fp) :
 /-- The "range check" gate (`decompose_running_sum.rs:86-96`): on `q_range_check`, the
 running word `z_cur − z_next·2^W` is `range_check`ed to `[0, 2^W)`. The word AST matches
 Rust: `z_cur - z_next * F::from(1 << W)` (constant scale on the right). -/
-def rangeCheckGate (W : ℕ) (cfg : Config) : Gate Fp where
-  name := "range check"
-  selector := cfg.qRangeCheck
-  constraints :=
-    let zCur : Expression Fp Query := queryAdvice cfg.z 0
-    let zNext : Expression Fp Query := queryAdvice cfg.z 1
-    let word := zCur - zNext * (((2 ^ W : ℕ) : Fp) : Expression Fp Query)
-    Constraints.withSelector cfg.qRangeCheck
-      [("range check", rangeCheckExpr (2 ^ W) word)]
+def rangeCheckGate (W : ℕ) (cfg : Config) : Gate Fp :=
+  let zCur : Expression Fp Query := queryAdvice cfg.z 0
+  let zNext : Expression Fp Query := queryAdvice cfg.z 1
+  let word := zCur - zNext * (((2 ^ W : ℕ) : Fp) : Expression Fp Query)
+  Gate.withSelector "range check" cfg.qRangeCheck
+    [zCur, zNext]
+    [("range check", rangeCheckExpr (2 ^ W) word)]
 
 /-- Rust `RunningSumConfig::configure` (lines 70-99): equality on `z`, register the
 range-check gate on the given selector. -/
@@ -126,6 +125,11 @@ def configure (W : ℕ) (qRangeCheck : Selector) (z : Column .advice) :
   let cfg : Config := { qRangeCheck, z }
   createGate (rangeCheckGate W cfg)
   return cfg
+
+instance (W : ℕ) (qRangeCheck : Selector) (z : Column .advice) :
+    ElaboratedConfigure (configure W qRangeCheck z) := by
+  unfold configure
+  infer_instance
 
 /-! ## The `copy_decompose` gadget (strict) -/
 

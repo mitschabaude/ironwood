@@ -21,7 +21,7 @@ open Zcash.Snark
 def capturedInstanceCommitmentPrefix : List (TranscriptElt Fp G) :=
   (List.ofFn (fun p : Fin shape.numProofs =>
     (List.ofFn (fun i : Fin capturedNumInstanceColumns =>
-      TranscriptElt.point (vk.instanceCommitment p i.val))))).flatten
+      TranscriptElt.point (derivedInstanceCommitment p i.val))))).flatten
 
 def capturedInitStartsWithScalar : Bool :=
   match capturedInit with

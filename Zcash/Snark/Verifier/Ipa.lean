@@ -1,5 +1,6 @@
 import Mathlib
-import Zcash.Snark.Core.Msm
+import Zcash.Arithmetic
+import Zcash.Arithmetic.Msm
 
 /-!
 # The inner-product-argument opening
@@ -19,6 +20,8 @@ separate equivalence proof.
 -/
 
 namespace Zcash.Snark
+
+open Zcash.Arithmetic (Msm Msm.eval_addToGScalars Msm.eval_addToUScalar Msm.eval_addToWScalar Msm.eval_appendTerm)
 
 /-- halo2 `compute_s`: the `2 ^ u.length` coefficients of `init · ∏ᵢ (1 + u_{k-1-i} · X^{2ⁱ})`.
 With `init = -c` these are the fingerprint's URS-generator coefficients for `[-c] G'`, where `G'`

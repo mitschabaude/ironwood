@@ -31,7 +31,6 @@ def fsWinsFull (A : OracleComp T F P) (accept : P → (Fin m → F) → (Fin k �
     (prefixesPre : P → Fin m → T) (prefixes : P → Fin k → T) (O : T → F) : Prop :=
   accept (A.run O) (fun i => O (prefixesPre (A.run O) i)) (fun j => O (prefixes (A.run O) j))
 
-open Classical in
 /-- The slice on which one adversary-chosen pre-IPA challenge is zero has probability at most
 `(Q+1)/|F|`. The extra query reads that challenge from the output's own prefix. -/
 theorem fsAdvantageFull_zero_slice_le (A : OracleComp T F P)
@@ -63,7 +62,6 @@ end AdaptiveGame
 
 section DomainRestriction
 
-open Classical in
 /-- Conditioning on junk oracle values reduces the split-domain game to a machine on `T` with the
 same query bound. -/
 theorem fsWinsFull_restrictSum_le {T J F P : Type*} [Fintype T] [DecidableEq T]

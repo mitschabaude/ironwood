@@ -38,15 +38,14 @@ structure Config where
 
 /-- The "Short fixed-base mul gate", in the Rust constraint order (matches the compiled
 AST). -/
-def shortGate (cfg : Config) : Gate Fp where
-  name := "Short fixed-base mul gate"
-  selector := cfg.qMulFixedShort
-  constraints :=
-    let yP : Expression Fp Query := queryAdvice cfg.superConfig.addConfig.yP 0
-    let yA : Expression Fp Query := queryAdvice cfg.superConfig.addConfig.yQR 0
-    -- z_21 = k_21, copied into the `u` column
-    let lastWindow : Expression Fp Query := queryAdvice cfg.superConfig.u 0
-    let sign : Expression Fp Query := queryAdvice cfg.superConfig.window 0
+def shortGate (cfg : Config) : Gate Fp :=
+  let yP : Expression Fp Query := queryAdvice cfg.superConfig.addConfig.yP 0
+  let yA : Expression Fp Query := queryAdvice cfg.superConfig.addConfig.yQR 0
+  -- z_21 = k_21, copied into the `u` column
+  let lastWindow : Expression Fp Query := queryAdvice cfg.superConfig.u 0
+  let sign : Expression Fp Query := queryAdvice cfg.superConfig.window 0
+  Gate.withSelector "Short fixed-base mul gate" cfg.qMulFixedShort
+    [yP, yA, lastWindow, sign] <|
     -- bool_check(last_window) = range_check(last_window, 2)
     let lastWindowCheck := rangeCheckExpr 2 lastWindow
     -- sign² − 1
@@ -55,11 +54,10 @@ def shortGate (cfg : Config) : Gate Fp where
     let yCheck := (yP - yA) * (yP + yA)
     -- sign·y_p − y_a
     let negationCheck := sign * yP - yA
-    Constraints.withSelector cfg.qMulFixedShort
-      [ ("last_window_check", lastWindowCheck),
-        ("sign_check", signCheck),
-        ("y_check", yCheck),
-        ("negation_check", negationCheck) ]
+    [ ("last_window_check", lastWindowCheck),
+      ("sign_check", signCheck),
+      ("y_check", yCheck),
+      ("negation_check", negationCheck) ]
 
 /-- Allocate the `q_mul_fixed_short` selector and register the gate. -/
 def configure (superConfig : MulFixed.Config) : Configure Fp Config := do
@@ -67,6 +65,11 @@ def configure (superConfig : MulFixed.Config) : Configure Fp Config := do
   let cfg : Config := { qMulFixedShort, superConfig }
   createGate (shortGate cfg)
   return cfg
+
+instance (superConfig : MulFixed.Config) :
+    ElaboratedConfigure (configure superConfig) := by
+  unfold configure
+  infer_instance
 
 structure Inputs (F : Type) where
   -- The unsigned magnitude, already assigned.

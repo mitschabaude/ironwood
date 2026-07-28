@@ -1,0 +1,614 @@
+import Zcash.Snark.Soundness.Canonical.PermutationInstantiation
+import Zcash.Snark.Soundness.PermutationConstruction
+import Zcash.Snark.Soundness.GoodChallenge
+import Zcash.Snark.Soundness.Canonical.DomainSelectors
+
+/-!
+# Semantic endpoint for resolver-backed permutation constraints
+
+`PermutationInstantiation` obtains the four polynomial divisibility families from the decoded
+commitment resolver.  This file supplies the other half of the call to
+`deployed_perm_copy_constraints_all_chunks`: the evaluation-domain facts, the keygen permutation
+semantics, and the priced `β`/`γ` exclusions.
+
+The keygen-facing record is intentionally independent of how the witness is obtained.  For the
+Action circuit it should be instantiated by the layout replay and VK-matching work: its `sigma`
+field is the replayed global cell permutation, and `mapsNames` says that the decoded common
+permutation polynomials interpolate the names of the cells to which that permutation sends each
+source cell.
+-/
+
+namespace Zcash.Snark
+
+open Polynomial
+open scoped ENNReal
+
+set_option maxHeartbeats 20000
+
+/-- Flatten a variable-width chunk cell to its global `(row, column)` coordinate.  The width bound
+is exactly the verifier invariant that each permutation chunk contains at most `chunkLen` columns. -/
+def flattenPermutationChunkCell {nc m chunkLen : ℕ} {width : ℕ → ℕ}
+    (hwidth : ∀ c < nc, width c ≤ chunkLen) :
+    ChunkCell nc m width → Fin m × Fin (nc * chunkLen)
+  | ⟨c, i, j⟩ =>
+      (i, ⟨c * chunkLen + j, by
+        have hj : (j : ℕ) < chunkLen :=
+          lt_of_lt_of_le j.isLt (hwidth c c.isLt)
+        calc
+          (c : ℕ) * chunkLen + j < (c : ℕ) * chunkLen + chunkLen :=
+            Nat.add_lt_add_left hj _
+          _ = ((c : ℕ) + 1) * chunkLen := (Nat.succ_mul _ _).symm
+          _ ≤ nc * chunkLen :=
+            Nat.mul_le_mul_right chunkLen (Nat.succ_le_of_lt c.isLt)⟩)
+
+/-- Flattening is injective even when the final chunk is shorter than `chunkLen`. -/
+theorem flattenPermutationChunkCell_injective
+    {nc m chunkLen : ℕ} {width : ℕ → ℕ}
+    (hwidth : ∀ c < nc, width c ≤ chunkLen) :
+    Function.Injective (flattenPermutationChunkCell (m := m) hwidth) := by
+  rintro ⟨c, i, j⟩ ⟨c', i', j'⟩ h
+  simp only [flattenPermutationChunkCell, Prod.mk.injEq, Fin.mk.injEq] at h
+  rcases h with ⟨hi, hoff⟩
+  have hj : (j : ℕ) < chunkLen :=
+    lt_of_lt_of_le j.isLt (hwidth c c.isLt)
+  have hj' : (j' : ℕ) < chunkLen :=
+    lt_of_lt_of_le j'.isLt (hwidth c' c'.isLt)
+  have hc : (c : ℕ) = c' := by
+    rcases lt_trichotomy (c : ℕ) c' with hlt | heq | hgt
+    · have hle : (c : ℕ) + 1 ≤ c' := Nat.succ_le_iff.mpr hlt
+      have hcol :
+          (c : ℕ) * chunkLen + j < (c' : ℕ) * chunkLen + j' := by
+        calc
+          (c : ℕ) * chunkLen + j < (c : ℕ) * chunkLen + chunkLen :=
+            Nat.add_lt_add_left hj _
+          _ = ((c : ℕ) + 1) * chunkLen := (Nat.succ_mul _ _).symm
+          _ ≤ (c' : ℕ) * chunkLen := Nat.mul_le_mul_right chunkLen hle
+          _ ≤ (c' : ℕ) * chunkLen + j' := Nat.le_add_right _ _
+      exact False.elim ((Nat.ne_of_lt hcol) hoff)
+    · exact heq
+    · have hle : (c' : ℕ) + 1 ≤ c := Nat.succ_le_iff.mpr hgt
+      have hcol :
+          (c' : ℕ) * chunkLen + j' < (c : ℕ) * chunkLen + j := by
+        calc
+          (c' : ℕ) * chunkLen + j' < (c' : ℕ) * chunkLen + chunkLen :=
+            Nat.add_lt_add_left hj' _
+          _ = ((c' : ℕ) + 1) * chunkLen := (Nat.succ_mul _ _).symm
+          _ ≤ (c : ℕ) * chunkLen := Nat.mul_le_mul_right chunkLen hle
+          _ ≤ (c : ℕ) * chunkLen + j := Nat.le_add_right _ _
+      exact False.elim ((Nat.ne_of_gt hcol) hoff)
+  have hcFin : c = c' := Fin.ext hc
+  subst c'
+  have hjFin : j = j' := Fin.ext (by simpa using hoff)
+  subst j'
+  subst i'
+  rfl
+
+/-- Embed an active-row chunk cell into the full evaluation-domain cell type. -/
+def widenPermutationChunkCell
+    {nc activeRows domainSize : ℕ} {width : ℕ → ℕ}
+    (hrows : activeRows ≤ domainSize) :
+    ChunkCell nc activeRows width → ChunkCell nc domainSize width
+  | ⟨chunk, row, column⟩ =>
+      ⟨chunk, ⟨row, lt_of_lt_of_le row.isLt hrows⟩, column⟩
+
+/-- Widening an active-row cell into the full evaluation domain loses no coordinate. -/
+theorem widenPermutationChunkCell_injective
+    {nc activeRows domainSize : ℕ} {width : ℕ → ℕ}
+    (hrows : activeRows ≤ domainSize) :
+    Function.Injective
+      (widenPermutationChunkCell (nc := nc) (width := width) hrows) := by
+  rintro ⟨chunk, row, column⟩ ⟨chunk', row', column'⟩ h
+  have hchunk : chunk = chunk' := congrArg Sigma.fst h
+  subst chunk'
+  have hrow : (row : ℕ) = row' :=
+    congrArg (fun cell => (cell.2.1 : ℕ)) h
+  have hcolumn : (column : ℕ) = column' :=
+    congrArg (fun cell => (cell.2.2 : ℕ)) h
+  have : row = row' := Fin.ext hrow
+  subst row'
+  have : column = column' := Fin.ext hcolumn
+  subst column'
+  rfl
+
+@[simp] theorem widenPermutationChunkCell_fst
+    {nc activeRows domainSize : ℕ} {width : ℕ → ℕ}
+    (hrows : activeRows ≤ domainSize) (c : ChunkCell nc activeRows width) :
+    (widenPermutationChunkCell hrows c).1 = c.1 := rfl
+
+@[simp] theorem widenPermutationChunkCell_row
+    {nc activeRows domainSize : ℕ} {width : ℕ → ℕ}
+    (hrows : activeRows ≤ domainSize) (c : ChunkCell nc activeRows width) :
+    ((widenPermutationChunkCell hrows c).2.1 : ℕ) = c.2.1 := rfl
+
+@[simp] theorem widenPermutationChunkCell_column
+    {nc activeRows domainSize : ℕ} {width : ℕ → ℕ}
+    (hrows : activeRows ≤ domainSize) (c : ChunkCell nc activeRows width) :
+    ((widenPermutationChunkCell hrows c).2.2 : ℕ) = c.2.2 := rfl
+
+/-- Injective names on the flat Halo2 column range induce injective names on the verifier's
+variable-width permutation chunks. -/
+theorem chunkRowName_injective_of_flat
+    {omega delta : Fp} {nc m chunkLen : ℕ} {width : ℕ → ℕ}
+    (hwidth : ∀ c < nc, width c ≤ chunkLen)
+    (hflat : Function.Injective fun c : Fin m × Fin (nc * chunkLen) =>
+      omega ^ (c.1 : ℕ) * delta ^ (c.2 : ℕ)) :
+    Function.Injective fun c : ChunkCell nc m width =>
+      chunkRowName omega delta chunkLen c.1 c.2.1 c.2.2 := by
+  intro c d hname
+  apply flattenPermutationChunkCell_injective hwidth
+  apply hflat
+  simpa [flattenPermutationChunkCell, chunkRowName, rowName] using hname
+
+/-- The standard root-of-unity/coset conditions imply injectivity for all chunked cell names. -/
+theorem chunkRowName_injective_of_coset
+    {omega delta : Fp} {nc m chunkLen : ℕ} {width : ℕ → ℕ}
+    (hwidth : ∀ c < nc, width c ≤ chunkLen)
+    (hne : ∀ j : Fin (nc * chunkLen), delta ^ (j : ℕ) ≠ 0)
+    (homega : omega ^ m = 1)
+    (horder : ∀ i i' : ℕ, i < m → i' < m → omega ^ i = omega ^ i' → i = i')
+    (hcoset : ∀ (j j' : Fin (nc * chunkLen)) (t : ℕ),
+      delta ^ (j : ℕ) = omega ^ t * delta ^ (j' : ℕ) → j = j') :
+    Function.Injective fun c : ChunkCell nc m width =>
+      chunkRowName omega delta chunkLen c.1 c.2.1 c.2.2 :=
+  chunkRowName_injective_of_flat hwidth
+    (name_injective_of_coset (fun j : Fin (nc * chunkLen) => delta ^ (j : ℕ))
+      hne homega horder hcoset)
+
+/-- Replay the mathematical keygen permutation in the source copy-list order.
+
+`PermConstruction.build` consumes its list from right to left, so reversing here makes the first
+declared copy the first cycle merge.  The concrete array/union-find replay can be compared with
+this permutation once its finite cell decoding is available. -/
+def replayKeygenPermutation
+    {cell : Type*} [DecidableEq cell] [Fintype cell]
+    (copies : List (cell × cell)) : Equiv.Perm cell :=
+  PermConstruction.build copies.reverse
+
+/-- Every copy processed by the generic keygen replay belongs to one resulting permutation cycle. -/
+theorem replayKeygenPermutation_pair_linked
+    {cell : Type*} [DecidableEq cell] [Fintype cell]
+    (copies : List (cell × cell)) {left right : cell}
+    (hcopy : (left, right) ∈ copies) :
+    (replayKeygenPermutation copies).SameCycle left right :=
+  PermConstruction.pair_linked copies.reverse (left, right)
+    (List.mem_reverse.mpr hcopy)
+
+/-- The replayed cycles are exactly the equivalence closure of the declared copies. -/
+theorem replayKeygenPermutation_sameCycle_iff
+    {cell : Type*} [DecidableEq cell] [Fintype cell]
+    (copies : List (cell × cell)) (left right : cell) :
+    (replayKeygenPermutation copies).SameCycle left right ↔
+      Relation.EqvGen (fun a b => (a, b) ∈ copies) left right := by
+  simpa only [replayKeygenPermutation, List.mem_reverse] using
+    PermConstruction.build_correct copies.reverse left right
+
+/--
+A predicate containing both endpoints of every replayed copy is preserved by
+the resulting permutation. This supplies the generic active-row closure fact
+needed when restricting a full-domain keygen permutation.
+-/
+theorem replayKeygenPermutation_preserves
+    {cell : Type*} [DecidableEq cell] [Fintype cell]
+    (copies : List (cell × cell)) (predicate : cell → Prop)
+    (hcopies : ∀ pair ∈ copies,
+      predicate pair.1 ∧ predicate pair.2)
+    (cell : cell) (hcell : predicate cell) :
+    predicate (replayKeygenPermutation copies cell) := by
+  have hedge : ∀ {left right},
+      (left, right) ∈ copies →
+        (predicate left ↔ predicate right) := by
+    intro left right hpair
+    obtain ⟨hleft, hright⟩ := hcopies (left, right) hpair
+    exact ⟨fun _ => hright, fun _ => hleft⟩
+  have hclosure : ∀ {left right},
+      Relation.EqvGen (fun a b => (a, b) ∈ copies) left right →
+        (predicate left ↔ predicate right) := by
+    intro left right hrelation
+    induction hrelation with
+    | rel left right hpair =>
+        exact hedge hpair
+    | refl value =>
+        exact Iff.rfl
+    | symm left right _ ih =>
+        exact ih.symm
+    | trans left middle right _ _ ih₁ ih₂ =>
+        exact ih₁.trans ih₂
+  have hsame :
+      (replayKeygenPermutation copies).SameCycle cell
+        (replayKeygenPermutation copies cell) := by
+    exact ⟨(1 : ℤ), by simp⟩
+  exact
+    (hclosure
+      ((replayKeygenPermutation_sameCycle_iff copies _ _).mp hsame)).mp
+        hcell
+
+/-- Transport keygen's flat `(row, permutation-column)` permutation through the concrete chunk
+layout.  Conjugation preserves the complete cycle structure; no assumption about equal chunk
+widths is needed. -/
+def chunkPermutationOfFlat
+    {nc m widthCount : ℕ} {width : ℕ → ℕ}
+    (flatten : ChunkCell nc m width ≃ Fin m × Fin widthCount)
+    (sigma : Equiv.Perm (Fin m × Fin widthCount)) :
+    Equiv.Perm (ChunkCell nc m width) :=
+  (flatten.trans sigma).trans flatten.symm
+
+@[simp] theorem chunkPermutationOfFlat_apply
+    {nc m widthCount : ℕ} {width : ℕ → ℕ}
+    (flatten : ChunkCell nc m width ≃ Fin m × Fin widthCount)
+    (sigma : Equiv.Perm (Fin m × Fin widthCount))
+    (c : ChunkCell nc m width) :
+    chunkPermutationOfFlat flatten sigma c = flatten.symm (sigma (flatten c)) := rfl
+
+/-- The common permutation polynomial generated for one source column over the full domain.
+
+At row `i`, its interpolation value is the identity name of the cell to which keygen's global
+permutation sends `(chunk, i, column)`. This is the mathematical form of Halo2's σ-column
+construction; commitment encoding and comparison with a concrete VK are deliberately downstream. -/
+noncomputable def keygenSigmaColumn
+    {nc m : ℕ} {width : ℕ → ℕ}
+    (omega delta : Fp) (chunkLen : ℕ)
+    (sigma : Equiv.Perm (ChunkCell nc m width))
+    (chunk : Fin nc) (column : Fin (width chunk)) : Polynomial Fp :=
+  Lagrange.interpolate Finset.univ
+    (fun i : Fin m => omega ^ (i : ℕ))
+    (fun i : Fin m =>
+      chunkRowName omega delta chunkLen
+        (sigma ⟨chunk, i, column⟩).1
+        (sigma ⟨chunk, i, column⟩).2.1
+        (sigma ⟨chunk, i, column⟩).2.2)
+
+/-- A generated σ column evaluates on every domain row to the name of the keygen-permuted cell. -/
+theorem keygenSigmaColumn_eval
+    {nc m : ℕ} {width : ℕ → ℕ}
+    {omega delta : Fp} {chunkLen : ℕ}
+    (sigma : Equiv.Perm (ChunkCell nc m width))
+    (hrows : Function.Injective fun i : Fin m => omega ^ (i : ℕ))
+    (chunk : Fin nc) (column : Fin (width chunk)) (i : Fin m) :
+    (keygenSigmaColumn omega delta chunkLen sigma chunk column).eval
+        (omega ^ (i : ℕ)) =
+      chunkRowName omega delta chunkLen
+        (sigma ⟨chunk, i, column⟩).1
+        (sigma ⟨chunk, i, column⟩).2.1
+        (sigma ⟨chunk, i, column⟩).2.2 :=
+  Lagrange.eval_interpolate_at_node _ hrows.injOn (Finset.mem_univ i)
+
+/-- Generated σ columns have degree strictly below the full evaluation-domain size. -/
+theorem keygenSigmaColumn_natDegree_lt
+    {nc m : ℕ} {width : ℕ → ℕ}
+    {omega delta : Fp} {chunkLen : ℕ}
+    (sigma : Equiv.Perm (ChunkCell nc m width))
+    (hrows : Function.Injective fun i : Fin m => omega ^ (i : ℕ))
+    (hm : 0 < m) (chunk : Fin nc) (column : Fin (width chunk)) :
+    (keygenSigmaColumn omega delta chunkLen sigma chunk column).natDegree < m := by
+  have hd :
+      (keygenSigmaColumn omega delta chunkLen sigma chunk column).degree < (m : ℕ) := by
+    have h := Lagrange.degree_interpolate_lt
+      (s := (Finset.univ : Finset (Fin m)))
+      (v := fun i : Fin m => omega ^ (i : ℕ))
+      (r := fun i : Fin m =>
+        chunkRowName omega delta chunkLen
+          (sigma ⟨chunk, i, column⟩).1
+          (sigma ⟨chunk, i, column⟩).2.1
+          (sigma ⟨chunk, i, column⟩).2.2)
+      hrows.injOn
+    simpa [keygenSigmaColumn, Finset.card_univ, Fintype.card_fin] using h
+  by_cases hzero : keygenSigmaColumn omega delta chunkLen sigma chunk column = 0
+  · rw [hzero, Polynomial.natDegree_zero]
+    exact hm
+  · exact (Polynomial.natDegree_lt_iff_degree_lt hzero).mpr hd
+
+/-- The polynomial pairs, indexed by permutation chunk, selected from one resolver-backed proof. -/
+noncomputable abbrev ResolverPermutationPairs
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) : ℕ → List (Polynomial Fp × Polynomial Fp) :=
+  permutationChunkPairsOfResolver vk poly p
+
+/-- Cells covered by one resolver-backed permutation argument. -/
+abbrev ResolverPermutationCell
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) (m : ℕ) :=
+  ChunkCell shape.numPermutationSets m
+    (fun c => (ResolverPermutationPairs vk poly p c).length)
+
+/-- VK structure and evaluation-domain facts needed after the polynomial constraints have been
+extracted.  These are independent of the proof's committed witness columns. -/
+structure ResolverPermutationDomain
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G)
+    (l0 lLast lBlind : Polynomial Fp) (n m : ℕ) : Prop where
+  nonempty : 0 < shape.numPermutationSets
+  chunkCount : vk.permutationChunks.length = shape.numPermutationSets
+  lastRotation :
+    vk.omega ^ m = vk.omega ^ (-((vk.blindingFactors : ℤ) + 1))
+  root : vk.omega ^ n = 1
+  active : ∀ i < m,
+    1 - (lLast.eval (vk.omega ^ i) + lBlind.eval (vk.omega ^ i)) ≠ 0
+  firstSelector : l0.eval (vk.omega ^ 0) ≠ 0
+  lastSelector : lLast.eval (vk.omega ^ m) ≠ 0
+
+/--
+Build the permutation-domain record with the canonical first, last-usable, and
+blinding-row selectors. The caller retains only the structural VK/domain facts;
+all selector evaluations are discharged here.
+-/
+theorem ResolverPermutationDomain.ofCanonicalSelectors
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) {n m : ℕ}
+    (hn : 0 < n) (hm : m < n)
+    (hrows : Function.Injective fun i : Fin n => vk.omega ^ (i : ℕ))
+    (hnonempty : 0 < shape.numPermutationSets)
+    (hchunkCount : vk.permutationChunks.length = shape.numPermutationSets)
+    (hlastRotation :
+      vk.omega ^ m = vk.omega ^ (-((vk.blindingFactors : ℤ) + 1)))
+    (hroot : vk.omega ^ n = 1) :
+    ResolverPermutationDomain vk
+      (rowSelectorPolynomial vk.omega ⟨0, hn⟩)
+      (rowSelectorPolynomial vk.omega ⟨m, hm⟩)
+      (blindSelectorPolynomial vk.omega ⟨m, hm⟩) n m where
+  nonempty := hnonempty
+  chunkCount := hchunkCount
+  lastRotation := hlastRotation
+  root := hroot
+  active i hi := by
+    exact last_add_blind_active ⟨m, hm⟩
+      ⟨i, lt_trans hi hm⟩ hi hrows
+  firstSelector :=
+    firstSelectorPolynomial_nonzero ⟨0, hn⟩ rfl hrows
+  lastSelector :=
+    lastSelectorPolynomial_nonzero ⟨m, hm⟩ hrows
+
+/-- The semantic content of the common permutation columns.
+
+`mapsNames` connects each decoded common polynomial to the image of that cell under the replayed
+keygen permutation. `namesInjective` is the usual root-of-unity/coset property of Halo2's
+`ωⁱ · δʲ` cell names. -/
+structure ResolverPermutationCycle
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) (m : ℕ) where
+  sigma : Equiv.Perm (ResolverPermutationCell vk poly p m)
+  mapsNames : ∀ c : ResolverPermutationCell vk poly p m,
+    chunkRowSigmaName vk.omega (ResolverPermutationPairs vk poly p)
+        c.1 c.2.1 c.2.2 =
+      chunkRowName vk.omega vk.delta vk.chunkLen
+        (sigma c).1 (sigma c).2.1 (sigma c).2.2
+  namesInjective :
+    Function.Injective fun c : ResolverPermutationCell vk poly p m =>
+      chunkRowName vk.omega vk.delta vk.chunkLen c.1 c.2.1 c.2.2
+
+/-- Construct the resolver's active-row semantic cycle from the full-domain keygen permutation and
+its generated common columns.
+
+`hrestrict` says the full keygen permutation preserves the active cells and restricts to `sigma`.
+The main equality left to a concrete VK is `hcolumns`: each resolver-selected common polynomial is
+the corresponding degree-`< domainSize` generated σ column. -/
+noncomputable def ResolverPermutationCycle.ofKeygenColumns
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) {domainSize activeRows : ℕ}
+    (hactive : activeRows ≤ domainSize)
+    (fullSigma : Equiv.Perm (ResolverPermutationCell vk poly p domainSize))
+    (sigma : Equiv.Perm (ResolverPermutationCell vk poly p activeRows))
+    (hrows : Function.Injective fun i : Fin domainSize => vk.omega ^ (i : ℕ))
+    (hcolumns : ∀
+      (chunk : Fin shape.numPermutationSets)
+      (column : Fin (ResolverPermutationPairs vk poly p chunk).length),
+      (ResolverPermutationPairs vk poly p chunk)[column].2 =
+        keygenSigmaColumn vk.omega vk.delta vk.chunkLen fullSigma chunk column)
+    (hrestrict : ∀ c : ResolverPermutationCell vk poly p activeRows,
+      widenPermutationChunkCell hactive (sigma c) =
+        fullSigma (widenPermutationChunkCell hactive c))
+    (hnames : Function.Injective fun c : ResolverPermutationCell vk poly p activeRows =>
+      chunkRowName vk.omega vk.delta vk.chunkLen c.1 c.2.1 c.2.2) :
+    ResolverPermutationCycle vk poly p activeRows := by
+  refine
+    { sigma := sigma
+      mapsNames := ?_
+      namesInjective := hnames }
+  rintro ⟨chunk, i, column⟩
+  change
+    ((ResolverPermutationPairs vk poly p chunk).getD column (0, 0)).2.eval
+        (vk.omega ^ (i : ℕ)) =
+      chunkRowName vk.omega vk.delta vk.chunkLen
+        (sigma ⟨chunk, i, column⟩).1
+        (sigma ⟨chunk, i, column⟩).2.1
+        (sigma ⟨chunk, i, column⟩).2.2
+  rw [List.getD_eq_getElem _ _ column.isLt]
+  have hcolumn :
+      (ResolverPermutationPairs vk poly p chunk)[column.val].2 =
+        keygenSigmaColumn vk.omega vk.delta vk.chunkLen fullSigma chunk column := by
+    simpa [List.get_eq_getElem] using hcolumns chunk column
+  rw [hcolumn]
+  have heval := keygenSigmaColumn_eval
+    (delta := vk.delta) (chunkLen := vk.chunkLen) fullSigma hrows chunk column
+    ⟨i, lt_of_lt_of_le i.isLt hactive⟩
+  let source : ResolverPermutationCell vk poly p activeRows := ⟨chunk, i, column⟩
+  have hname := congrArg
+    (fun c : ResolverPermutationCell vk poly p domainSize =>
+      chunkRowName vk.omega vk.delta vk.chunkLen c.1 c.2.1 c.2.2)
+    (hrestrict source)
+  calc
+    (keygenSigmaColumn vk.omega vk.delta vk.chunkLen fullSigma chunk column).eval
+        (vk.omega ^ (i : ℕ)) =
+      chunkRowName vk.omega vk.delta vk.chunkLen
+        (fullSigma (widenPermutationChunkCell hactive source)).1
+        (fullSigma (widenPermutationChunkCell hactive source)).2.1
+        (fullSigma (widenPermutationChunkCell hactive source)).2.2 := by
+          simpa [source] using heval
+    _ = chunkRowName vk.omega vk.delta vk.chunkLen
+        (widenPermutationChunkCell hactive (sigma source)).1
+        (widenPermutationChunkCell hactive (sigma source)).2.1
+        (widenPermutationChunkCell hactive (sigma source)).2.2 := hname.symm
+    _ = chunkRowName vk.omega vk.delta vk.chunkLen
+        (sigma ⟨chunk, i, column⟩).1
+        (sigma ⟨chunk, i, column⟩).2.1
+        (sigma ⟨chunk, i, column⟩).2.2 := by simp [source]
+
+/-- The polynomial in `γ` whose non-roots let the grand-product identity recover the multiset of
+`(value, name)` pairs.  Its coefficients are fixed after `β` is squeezed. -/
+noncomputable def resolverPermutationGammaDifference
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (ch : Challenges shape.k Fp)
+    (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) (m : ℕ) : Polynomial Fp :=
+  linProdDiff
+    ((chunkedCellPairs shape.numPermutationSets m
+      (fun c => (ResolverPermutationPairs vk poly p c).length)
+      (chunkRowValue vk.omega (ResolverPermutationPairs vk poly p))
+      (chunkRowSigmaName vk.omega (ResolverPermutationPairs vk poly p))).map
+        (fun q => q.1 + q.2 * ch.beta))
+    ((chunkedCellPairs shape.numPermutationSets m
+      (fun c => (ResolverPermutationPairs vk poly p c).length)
+      (chunkRowValue vk.omega (ResolverPermutationPairs vk poly p))
+      (chunkRowName vk.omega vk.delta vk.chunkLen)).map
+        (fun q => q.1 + q.2 * ch.beta))
+
+/-- The part of a source-cell permutation factor fixed before `γ` is squeezed. -/
+noncomputable def resolverPermutationFactorOffset
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (ch : Challenges shape.k Fp)
+    (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) (m : ℕ)
+    (cell : ResolverPermutationCell vk poly p m) : Fp :=
+  chunkRowValue vk.omega (ResolverPermutationPairs vk poly p)
+      cell.1 cell.2.1 cell.2.2
+    + ch.beta * chunkRowName vk.omega vk.delta vk.chunkLen
+      cell.1 cell.2.1 cell.2.2
+
+/-- Values of `γ` that make at least one source-cell permutation factor vanish. -/
+noncomputable def resolverPermutationZeroFactorBadSet
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (ch : Challenges shape.k Fp)
+    (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) (m : ℕ) : Finset Fp :=
+  additiveZeroBadSet (resolverPermutationFactorOffset vk ch poly p m)
+
+/-- A zero source-cell factor is exactly membership in its schedule-correct `γ` bad set. -/
+theorem mem_resolverPermutationZeroFactorBadSet_iff
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (ch : Challenges shape.k Fp)
+    (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) (m : ℕ) :
+    ch.gamma ∈ resolverPermutationZeroFactorBadSet vk ch poly p m ↔
+      ∃ cell : ResolverPermutationCell vk poly p m,
+        chunkRowValue vk.omega (ResolverPermutationPairs vk poly p)
+            cell.1 cell.2.1 cell.2.2
+          + ch.beta * chunkRowName vk.omega vk.delta vk.chunkLen
+            cell.1 cell.2.1 cell.2.2
+          + ch.gamma = 0 := by
+  exact mem_additiveZeroBadSet_iff
+    (resolverPermutationFactorOffset vk ch poly p m) ch.gamma
+
+/-- The residual zero-factor exclusion costs at most one `γ` value per active permutation cell. -/
+theorem uniformChallenge_resolverPermutationZeroFactorBadSet
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (ch : Challenges shape.k Fp)
+    (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) (m : ℕ) :
+    uniformChallenge.toOuterMeasure
+        (resolverPermutationZeroFactorBadSet vk ch poly p m)
+      ≤ (Fintype.card (ResolverPermutationCell vk poly p m) : ℝ≥0∞)
+          / (Fintype.card Fp : ℝ≥0∞) :=
+  uniformChallenge_additiveZeroBadSet
+    (resolverPermutationFactorOffset vk ch poly p m)
+
+/-- The complete `γ` exclusion: roots needed for multiset recovery together with the individual
+source-cell factors that must stay nonzero while propagating equality around a cycle. -/
+noncomputable def resolverPermutationGammaBadSet
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (ch : Challenges shape.k Fp)
+    (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) (m : ℕ) : Finset Fp :=
+  szBadSet (resolverPermutationGammaDifference vk ch poly p m) ∪
+    resolverPermutationZeroFactorBadSet vk ch poly p m
+
+/-- The combined `γ` exclusion has the sum of the Schwartz–Zippel and active-cell budgets. -/
+theorem uniformChallenge_resolverPermutationGammaBadSet
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (ch : Challenges shape.k Fp)
+    (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) (m : ℕ) :
+    uniformChallenge.toOuterMeasure
+        (resolverPermutationGammaBadSet vk ch poly p m)
+      ≤ ((resolverPermutationGammaDifference vk ch poly p m).natDegree +
+            Fintype.card (ResolverPermutationCell vk poly p m) : ℕ) /
+          (Fintype.card Fp : ℝ≥0∞) := by
+  refine le_trans
+    (uniformChallenge_szBadSet_union
+      (resolverPermutationGammaDifference vk ch poly p m)
+      (resolverPermutationZeroFactorBadSet vk ch poly p m)) ?_
+  gcongr
+  exact_mod_cast additiveZeroBadSet_card_le
+    (resolverPermutationFactorOffset vk ch poly p m)
+
+/-- The challenge exclusions used both to recover the multiset of `(value, name)` pairs and to
+propagate equality around its cycles.  They are kept separate from VK semantics because the
+forking/bad-set accounting, rather than key generation, supplies them. -/
+structure ResolverPermutationGoodChallenges
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (ch : Challenges shape.k Fp)
+    (poly : CommitmentId → Polynomial Fp)
+    (p : Fin shape.numProofs) (m : ℕ) : Prop where
+  gamma : ch.gamma ∉ resolverPermutationGammaBadSet vk ch poly p m
+  beta : ∀ j, ch.beta ∉ szBadSet ((pairProdDiff
+    (chunkedCellPairs shape.numPermutationSets m
+      (fun c => (ResolverPermutationPairs vk poly p c).length)
+      (chunkRowValue vk.omega (ResolverPermutationPairs vk poly p))
+      (chunkRowSigmaName vk.omega (ResolverPermutationPairs vk poly p)))
+    (chunkedCellPairs shape.numPermutationSets m
+      (fun c => (ResolverPermutationPairs vk poly p c).length)
+      (chunkRowValue vk.omega (ResolverPermutationPairs vk poly p))
+      (chunkRowName vk.omega vk.delta vk.chunkLen))).coeff j)
+
+/-- Resolver-backed full constraint satisfaction enforces equality on every replayed keygen
+permutation cycle.  The formerly explicit zero-factor branch is excluded by the separately priced
+active-cell component of `ResolverPermutationGoodChallenges.gamma`.
+
+The proof does no new algebra: it joins the polynomial half from
+`ConstraintSatisfaction.resolverPermutationConstraints` to the domain, keygen-semantic, and
+good-challenge halves at `deployed_perm_copy_constraints_all_chunks`. -/
+theorem ConstraintSatisfaction.resolverPermutationCopyConstraints
+    {shape : Shape} {G : Type*}
+    (vk : VerifyingKey shape Fp G) (ch : Challenges shape.k Fp)
+    (poly : CommitmentId → Polynomial Fp)
+    (l0 lLast lBlind : Polynomial Fp)
+    (p : Fin shape.numProofs) {n m : ℕ}
+    (h : ConstraintSatisfaction
+      (constraintModelOfPermutationResolver vk ch poly l0 lLast lBlind) n)
+    (hdom : ResolverPermutationDomain vk l0 lLast lBlind n m)
+    (hcycle : ResolverPermutationCycle vk poly p m)
+    (hgood : ResolverPermutationGoodChallenges vk ch poly p m)
+    {c d : ResolverPermutationCell vk poly p m}
+    (hcd : hcycle.sigma.SameCycle c d) :
+    chunkRowValue vk.omega (ResolverPermutationPairs vk poly p)
+        c.1 c.2.1 c.2.2 =
+      chunkRowValue vk.omega (ResolverPermutationPairs vk poly p)
+        d.1 d.2.1 d.2.2 := by
+  have hconstraints :=
+    h.resolverPermutationConstraints vk ch poly l0 lLast lBlind p
+      hdom.nonempty hdom.chunkCount hdom.lastRotation
+  have hresult := deployed_perm_copy_constraints_all_chunks
+    vk.omega ch.beta ch.gamma vk.delta vk.chunkLen
+    (fun chunk => poly (.permProduct p chunk))
+    (ResolverPermutationPairs vk poly p)
+    l0 lLast lBlind hdom.nonempty hcycle.sigma
+    hconstraints.step hconstraints.chain hconstraints.start hconstraints.finish
+    (by
+      intro i
+      rw [← pow_mul, Nat.mul_comm, pow_mul, hdom.root, one_pow])
+    hdom.active hdom.firstSelector hdom.lastSelector
+    hcycle.mapsNames hcycle.namesInjective
+    (fun hmem => hgood.gamma (Finset.mem_union_left _ hmem)) hgood.beta hcd
+  rcases hresult with heq | hzero
+  · exact heq
+  · apply False.elim
+    apply hgood.gamma
+    apply Finset.mem_union_right
+    rw [mem_resolverPermutationZeroFactorBadSet_iff]
+    rcases hzero with ⟨chunk, hchunk, i, hi, j, hj, hfactor⟩
+    exact ⟨⟨⟨chunk, Finset.mem_range.mp hchunk⟩,
+      ⟨⟨i, Finset.mem_range.mp hi⟩, ⟨j, Finset.mem_range.mp hj⟩⟩⟩, hfactor⟩
+
+end Zcash.Snark

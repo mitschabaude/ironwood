@@ -10,11 +10,9 @@ import Zcash.Snark.Soundness.Forking.Assembly
 /-!
 # Conditional soundness and deployed acceptance
 
-This module has two soundness layers:
-
-* `_conditional` theorems assume an opaque acceptance and extraction interface.
-* deployed theorems start from `DeployedAccepts`, where `assemble?` succeeds and the resulting MSM
-  evaluates to zero.
+Soundness here starts from `DeployedAccepts`: `assemble?` succeeds and the resulting MSM evaluates
+to zero. An earlier layer took an opaque `accepts : Prop` together with an assumed extraction
+interface; both are retired, since the computed route now derives what they assumed.
 
 ## The deployed route
 
@@ -32,30 +30,15 @@ In a prime-order group, a nontrivial relation exists mathematically. The securit
 its coefficients. `NontrivialRelation` therefore carries those coefficients as data, and the
 reductions return it explicitly instead of asserting that one exists.
 
-## Assumptions (the conditional family)
-
-* **Opaque accept.** `accepts` is a free `Prop`, so `orchard_verifier_sound_conditional` says
-  nothing about the fingerprint. The `_deployed` variants take `DeployedAccepts` instead.
-* **Extraction bundled with Fiat–Shamir.** `ExtractableFromAcceptance` assumes the IPA
-  knowledge-soundness conclusion, so the proven extraction lemmas (`accepting_fold_eq`,
-  `extract_correct`) are off this path.
-* **Circuit satisfaction assumed.** It also supplies `circuitSat a` rather than deriving it from
-  the deployed gate check (`constraint_identity_of_accept` + the multiopen decode).
-
-This conditional family leaves those components opaque. The computed route is in
-`Forking.Adversary.Algebraic`; `KnowledgeSoundness` records its computational boundary.
+The computed route is in `Forking.Adversary.Algebraic`; `KnowledgeSoundness` records its
+computational boundary.
 -/
 
 namespace Zcash.Snark
 
-variable {G : Type*} [AddCommGroup G] [Module Fp G]
+open Zcash.Arithmetic (Msm)
 
-/-- Conditional interface: acceptance supplies a consistent transcript, IPA opening, and circuit
-witness. -/
-def ExtractableFromAcceptance (urs : URS G) (P : G) (b : Fin (2 ^ urs.k) → Fp) (v : Fp)
-    (circuitSat : (Fin (2 ^ urs.k) → Fp) → Prop) (accepts : Prop) : Prop :=
-  accepts → ∃ (t : Tree Fp urs.k) (a : Fin (2 ^ urs.k) → Fp),
-    Consistent t a ∧ IpaRelation urs P b v a ∧ circuitSat a
+variable {G : Type*} [AddCommGroup G] [Module Fp G]
 
 -- Tracked semantic-adequacy gap: `S` is a free `Prop` and `hencodes` an assumed hypothesis, so
 -- the chain stops at "the extracted witness satisfies the gates" (`SnarkRelation`) and never
@@ -63,21 +46,10 @@ def ExtractableFromAcceptance (urs : URS G) (P : G) (b : Fin (2 ^ urs.k) → Fp)
 -- correctly derived, spend authorized). Closing it means instantiating `S` to the concrete
 -- Orchard statement and proving `hencodes` — the output-side dual of the input-side
 -- VK-correctness gap (see `Verifier/Assemble.lean`). Large; not started.
-/-- If opaque acceptance supplies the extraction data, derive `S` through `hencodes`. -/
-theorem orchard_verifier_sound_conditional (urs : URS G)
-    {P : G} {b : Fin (2 ^ urs.k) → Fp} {v : Fp} {circuitSat : (Fin (2 ^ urs.k) → Fp) → Prop}
-    {accepts : Prop} (haccepts : accepts)
-    (hextract : ExtractableFromAcceptance urs P b v circuitSat accepts)
-    {S : Prop} (hencodes : ∀ a, SnarkRelation urs P b v circuitSat a → S) :
-    S := by
-  obtain ⟨t, a, hcons, hopen, hsat⟩ := hextract haccepts
-  exact hencodes a (knowledge_sound urs hcons hopen hsat).2
-
-/-- The rejecting assembler succeeds and its final MSM evaluates to zero against the URS. -/
 def DeployedAccepts [DecidableEq G] [Inhabited G] {shape : Shape} (urs : URS G)
-    (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
+    (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G) (ps : ProofString shape Fp G)
     (ch : Challenges shape.k Fp) : Prop :=
-  match assemble? vk ps ch with
+  match assemble? vk instanceCommitment ps ch with
   | some m => (hk ▸ m : Msm urs.k Fp G).eval urs = 0
   | none => False
 
@@ -94,20 +66,20 @@ theorem eval_cast {shape : Shape} {urs : URS G} (hk : shape.k = urs.k) (m : Msm 
 
 /-- Deployed acceptance implies halo2's explicit IPA verifier equation. -/
 theorem deployedAccepts_verifierEq [DecidableEq G] [Inhabited G] {shape : Shape}
-    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
-    (ch : Challenges shape.k Fp) (h : DeployedAccepts urs hk vk ps ch) :
-    DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk ps ch := by
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G) (ps : ProofString shape Fp G)
+    (ch : Challenges shape.k Fp) (h : DeployedAccepts urs hk vk instanceCommitment ps ch) :
+    DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk instanceCommitment ps ch := by
   unfold DeployedAccepts at h
-  cases hm : assemble? vk ps ch with
+  cases hm : assemble? vk instanceCommitment ps ch with
   | none => rw [hm] at h; exact absurd h (by simp)
   | some m =>
       rw [hm] at h
       simp only [] at h
       rw [eval_cast hk m] at h
-      have hmeq := assemble?_eq_some vk ps ch hm
+      have hmeq := assemble?_eq_some vk instanceCommitment ps ch hm
       unfold DeployedIpaVerifierEq
       rw [← deployed_verification_eq (hk ▸ urs.g) urs.w urs.u ps ch
-            (constructIntermediateSets (assembleQueries vk ps ch)), ← hmeq]
+            (constructIntermediateSets (assembleQueries vk instanceCommitment ps ch)), ← hmeq]
       exact h
 
 /-! ## `IpaRelation` is derived from the transcript tree, not assumed
@@ -136,9 +108,9 @@ def ipaRelation_extract (urs : URS G) (b : Fin (2 ^ urs.k) → Fp) (P : G) (v : 
 
 /-- The proof's deployed multiopen commitment over the supplied URS. -/
 abbrev deployedCommitment [DecidableEq G] [Inhabited G] {shape : Shape} (urs : URS G)
-    (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
+    (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G) (ps : ProofString shape Fp G)
     (ch : Challenges shape.k Fp) : G :=
-  multiopenCommitment (hk ▸ urs.g) urs.w urs.u vk ps ch
+  multiopenCommitment (hk ▸ urs.g) urs.w urs.u vk instanceCommitment ps ch
 
 /-! ## The tree opens the commitment up to declared `U`/`W` components
 
@@ -149,7 +121,7 @@ The forked transcript therefore declares `U` and `W` components and opens the ad
 
 /-- A forked accepting IPA tree opening the deployed commitment after removing declared components. -/
 structure ForkedTranscript [DecidableEq G] [Inhabited G] {shape : Shape} (urs : URS G)
-    (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
+    (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G) (ps : ProofString shape Fp G)
     (ch : Challenges shape.k Fp) (b : Fin (2 ^ urs.k) → Fp) (z blind : Fp) where
   tree : DeployedIpaTreeV Fp G urs.k
   /-- The declared `U`-component of the pinned commitment (honest value: `0`). -/
@@ -157,31 +129,31 @@ structure ForkedTranscript [DecidableEq G] [Inhabited G] {shape : Shape} (urs : 
   /-- The declared `W`-component of the pinned commitment (honest value: the aggregate blind). -/
   pW : Fp
   accepts : DeployedIpaAcceptV urs.g b urs.u urs.w z
-    (deployedCommitment urs hk vk ps ch - pU • urs.u - pW • urs.w)
-    (multiopenValue vk ps ch) blind tree
+    (deployedCommitment urs hk vk instanceCommitment ps ch - pU • urs.u - pW • urs.w)
+    (multiopenValue vk instanceCommitment ps ch) blind tree
 
 /-- The deployed commitment after removing the transcript's declared `U` and `W` components. -/
 abbrev ForkedTranscript.openedCommitment [DecidableEq G] [Inhabited G] {shape : Shape}
-    {urs : URS G} {hk : shape.k = urs.k} {vk : VerifyingKey shape Fp G}
+    {urs : URS G} {hk : shape.k = urs.k} {vk : VerifyingKey shape Fp G} {instanceCommitment : Fin shape.numProofs → ℕ → G}
     {ps : ProofString shape Fp G} {ch : Challenges shape.k Fp} {b : Fin (2 ^ urs.k) → Fp}
-    {z blind : Fp} (fs : ForkedTranscript urs hk vk ps ch b z blind) : G :=
-  deployedCommitment urs hk vk ps ch - fs.pU • urs.u - fs.pW • urs.w
+    {z blind : Fp} (fs : ForkedTranscript urs hk vk instanceCommitment ps ch b z blind) : G :=
+  deployedCommitment urs hk vk instanceCommitment ps ch - fs.pU • urs.u - fs.pW • urs.w
 
 /-- Build a forked transcript from a blinded opening of the deployed commitment. -/
 theorem ForkedTranscript.nonempty_of_opening [DecidableEq G] [Inhabited G] {shape : Shape}
-    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
     (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
     {b : Fin (2 ^ urs.k) → Fp} {z blind : Fp}
     (u₁ u₂ u₃ : Fp) (h12 : u₁ ≠ u₂) (h13 : u₁ ≠ u₃) (h23 : u₂ ≠ u₃)
     (hu₁ : u₁ ≠ 0) (hu₂ : u₂ ≠ 0) (hu₃ : u₃ ≠ 0)
     (a : Fin (2 ^ urs.k) → Fp) (pU pW : Fp)
-    (hP : deployedCommitment urs hk vk ps ch = commitGen urs.g a + pU • urs.u + pW • urs.w)
-    (hv : multiopenValue vk ps ch = commitGen b a) :
-    Nonempty (ForkedTranscript urs hk vk ps ch b z blind) := by
+    (hP : deployedCommitment urs hk vk instanceCommitment ps ch = commitGen urs.g a + pU • urs.u + pW • urs.w)
+    (hv : multiopenValue vk instanceCommitment ps ch = commitGen b a) :
+    Nonempty (ForkedTranscript urs hk vk instanceCommitment ps ch b z blind) := by
   obtain ⟨t, ht⟩ := deployedIpaAcceptV_of_witness u₁ u₂ u₃ h12 h13 h23 hu₁ hu₂ hu₃
     urs.g b urs.u urs.w z blind a
   refine ⟨⟨t, pU, pW, ?_⟩⟩
-  have hcancel : deployedCommitment urs hk vk ps ch - pU • urs.u - pW • urs.w
+  have hcancel : deployedCommitment urs hk vk instanceCommitment ps ch - pU • urs.u - pW • urs.w
       = commitGen urs.g a := by rw [hP]; abel
   rw [hcancel, hv]
   exact ht
@@ -191,35 +163,35 @@ theorem ForkedTranscript.nonempty_of_opening [DecidableEq G] [Inhabited G] {shap
 It bundles random-oracle rewinding, round-point representations, leaf data, and declared commitment
 components. The live forking path proves the deterministic extraction pieces separately. -/
 def FiatShamirTree [DecidableEq G] [Inhabited G] {shape : Shape} (urs : URS G) (hk : shape.k = urs.k)
-    (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G) (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
     (b : Fin (2 ^ urs.k) → Fp) (z blind : Fp) : Type _ :=
-  DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk ps ch →
-    ForkedTranscript urs hk vk ps ch b z blind
+  DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk instanceCommitment ps ch →
+    ForkedTranscript urs hk vk instanceCommitment ps ch b z blind
 
 /-- Apply the legacy fork bridge to a deployed accepting proof. -/
 def ForkedTranscript.ofAccepts [DecidableEq G] [Inhabited G] {shape : Shape} (urs : URS G)
-    (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
+    (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G) (ps : ProofString shape Fp G)
     (ch : Challenges shape.k Fp) {b : Fin (2 ^ urs.k) → Fp} {z blind : Fp}
-    (haccepts : DeployedAccepts urs hk vk ps ch)
-    (hFS : FiatShamirTree urs hk vk ps ch b z blind) :
-    ForkedTranscript urs hk vk ps ch b z blind :=
-  hFS (deployedAccepts_verifierEq urs hk vk ps ch haccepts)
+    (haccepts : DeployedAccepts urs hk vk instanceCommitment ps ch)
+    (hFS : FiatShamirTree urs hk vk instanceCommitment ps ch b z blind) :
+    ForkedTranscript urs hk vk instanceCommitment ps ch b z blind :=
+  hFS (deployedAccepts_verifierEq urs hk vk instanceCommitment ps ch haccepts)
 
 /-- Random-oracle forking output: declared commitment components and a ternary accepting tree. -/
 def FiatShamirForking [DecidableEq G] [Inhabited G] {shape : Shape} (urs : URS G) (hk : shape.k = urs.k)
-    (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G) (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
     (b : Fin (2 ^ urs.k) → Fp) (z blind : Fp) : Type _ :=
-  DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk ps ch →
+  DeployedIpaVerifierEq (hk ▸ urs.g) urs.w urs.u vk instanceCommitment ps ch →
     Σ' (pU pW : Fp) (t : DeployedIpaTreeV Fp G urs.k),
       ForkAccept urs.g b urs.u urs.w z
-        (deployedCommitment urs hk vk ps ch - pU • urs.u - pW • urs.w) (multiopenValue vk ps ch) blind t
+        (deployedCommitment urs hk vk instanceCommitment ps ch - pU • urs.u - pW • urs.w) (multiopenValue vk instanceCommitment ps ch) blind t
 
 /-- Convert explicit forking output into the legacy `FiatShamirTree` interface. -/
 def fiatShamirTree_of_forking [DecidableEq G] [Inhabited G] {shape : Shape} (urs : URS G)
-    (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
+    (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G) (ps : ProofString shape Fp G)
     (ch : Challenges shape.k Fp) (b : Fin (2 ^ urs.k) → Fp) (z blind : Fp)
-    (hForking : FiatShamirForking urs hk vk ps ch b z blind) :
-    FiatShamirTree urs hk vk ps ch b z blind := by
+    (hForking : FiatShamirForking urs hk vk instanceCommitment ps ch b z blind) :
+    FiatShamirTree urs hk vk instanceCommitment ps ch b z blind := by
   intro hEq
   obtain ⟨pU, pW, t, hFork⟩ := hForking hEq
   exact ⟨t, pU, pW, forkAccept_to_acceptV _ _ _ _ _ t hFork⟩
@@ -234,33 +206,31 @@ extracted witness and multiopen decode.
 
 /-- Compute a nontrivial relation when a forked transcript does not project to a clean IPA tree. -/
 def NontrivialRelation.ofUnopenedFork [DecidableEq G] [Inhabited G] {shape : Shape}
-    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G) (ps : ProofString shape Fp G)
     (ch : Challenges shape.k Fp) {b : Fin (2 ^ urs.k) → Fp} {z blind : Fp} (hz : z ≠ 0)
-    (fs : ForkedTranscript urs hk vk ps ch b z blind)
-    (hne : ¬ IpaAcceptV urs.g b fs.openedCommitment (multiopenValue vk ps ch)
+    (fs : ForkedTranscript urs hk vk instanceCommitment ps ch b z blind)
+    (hne : ¬ IpaAcceptV urs.g b fs.openedCommitment (multiopenValue vk instanceCommitment ps ch)
       (projTree fs.tree)) :
     NontrivialRelation (F := Fp) urs.g urs.u urs.w :=
   NontrivialRelation.ofDeployedTree hz urs.g b fs.openedCommitment
-    (multiopenValue vk ps ch) blind fs.tree fs.accepts hne
+    (multiopenValue vk instanceCommitment ps ch) blind fs.tree fs.accepts hne
 
-/-- **Deployed opening, given a clean fork.** From a forked transcript whose projection is
-cleanly accepted, `ipa_soundV` extracts the opening witness for the declared opening
-`fs.openedCommitment` — the blinded opening of the pinned commitment,
-`deployedCommitment = ⟨a, g⟩ + [pU]u + [pW]w` with `⟨a, b⟩ = multiopenValue`; the circuit side
-(`hcirc`) and VK-correctness (`hencodes`) conclude `S`. The opening witness `a` and the `IpaRelation`
-certificate `hrel` are supplied by the caller (derived from the clean accept via
-`ipaRelation_of_acceptV`). -/
+/-- Derive `S` from a clean fork, an all-openings circuit premise, and `hencodes`. -/
 theorem orchard_verifier_deployed_opening_of_forked [DecidableEq G] [Inhabited G] {shape : Shape}
-    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G) (ps : ProofString shape Fp G)
     (ch : Challenges shape.k Fp) {b : Fin (2 ^ urs.k) → Fp} {z blind : Fp}
-    (a : Fin (2 ^ urs.k) → Fp) {circuitSat : (Fin (2 ^ urs.k) → Fp) → Prop}
-    (fs : ForkedTranscript urs hk vk ps ch b z blind)
-    (hrel : IpaRelation urs fs.openedCommitment b (multiopenValue vk ps ch) a)
-    (hcirc : circuitSat a)
+    {circuitSat : (Fin (2 ^ urs.k) → Fp) → Prop}
+    (fs : ForkedTranscript urs hk vk instanceCommitment ps ch b z blind)
+    (hclean : IpaAcceptV urs.g b fs.openedCommitment (multiopenValue vk instanceCommitment ps ch)
+      (projTree fs.tree))
+    (hcirc : ∀ a, IpaRelation urs fs.openedCommitment b
+      (multiopenValue vk instanceCommitment ps ch) a → circuitSat a)
     {S : Prop} (hencodes : ∀ a, SnarkRelation urs fs.openedCommitment b
-      (multiopenValue vk ps ch) circuitSat a → S) :
-    S :=
-  hencodes a ⟨hrel, hcirc⟩
+      (multiopenValue vk instanceCommitment ps ch) circuitSat a → S) :
+    S := by
+  obtain ⟨a, hrel⟩ := ipaRelation_of_acceptV urs b fs.openedCommitment
+    (multiopenValue vk instanceCommitment ps ch) (projTree fs.tree) hclean
+  exact hencodes a ⟨hrel, hcirc a hrel⟩
 
 /-! ## `circuitSat` is derived from the verifier's gate check + Schwartz–Zippel
 
@@ -269,32 +239,33 @@ challenge avoids the Schwartz–Zippel bad set.
 -/
 
 open Polynomial in
-/-- **Deployed opening and constraint, given a clean fork.** As
-`orchard_verifier_deployed_opening_of_forked`, with the circuit side derived too: `circuitSat` —
-instantiated to `circuitSatViaGates` — from the verifier's gate point-check `hquot` at the
-challenge `x`, lifted to the polynomial identity by Schwartz–Zippel (`hgood`), via
-`circuitSatViaGates_of_check`. `hquot`/`hgood` now constrain the single extracted witness `a` — lifted to the constraint
-identity by Schwartz–Zippel. The multiopen decode (`batch_open_soundV`), binding
-`decodeAdvice`/`decodeInstance` to the committed columns, is still open. -/
+/-- Add the gate-check conclusion to `orchard_verifier_deployed_opening_of_forked`. -/
 theorem orchard_verifier_deployed_constraint_of_forked [DecidableEq G] [Inhabited G] {shape : Shape}
-    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (ps : ProofString shape Fp G)
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G) (ps : ProofString shape Fp G)
     (ch : Challenges shape.k Fp) {b : Fin (2 ^ urs.k) → Fp} {z blind : Fp}
     (fixedCols : ℕ → Polynomial Fp)
     (decodeAdvice decodeInstance : (Fin (2 ^ urs.k) → Fp) → (ℕ → Polynomial Fp))
     (y : Fp) {ng : ℕ} (gates : Fin ng → Expr Fp) (hpoly : Polynomial Fp) (deg : ℕ) (x : Fp)
-    (a : Fin (2 ^ urs.k) → Fp)
-    (fs : ForkedTranscript urs hk vk ps ch b z blind)
-    (hrel : IpaRelation urs fs.openedCommitment b (multiopenValue vk ps ch) a)
-    (hquot : quotientCheck (combineGates fixedCols (decodeAdvice a) (decodeInstance a) y gates) hpoly deg x)
-    (hgood : combineGates fixedCols (decodeAdvice a) (decodeInstance a) y gates ≠ hpoly * (X ^ deg - 1) →
+    (fs : ForkedTranscript urs hk vk instanceCommitment ps ch b z blind)
+    (hclean : IpaAcceptV urs.g b fs.openedCommitment (multiopenValue vk instanceCommitment ps ch)
+      (projTree fs.tree))
+    (hquot : ∀ a, IpaRelation urs fs.openedCommitment b
+      (multiopenValue vk instanceCommitment ps ch) a →
+      quotientCheck (combineGates fixedCols (decodeAdvice a) (decodeInstance a) y gates) hpoly deg x)
+    (hgood : ∀ a, IpaRelation urs fs.openedCommitment b
+      (multiopenValue vk instanceCommitment ps ch) a →
+      combineGates fixedCols (decodeAdvice a) (decodeInstance a) y gates ≠ hpoly * (X ^ deg - 1) →
       (combineGates fixedCols (decodeAdvice a) (decodeInstance a) y gates
         - hpoly * (X ^ deg - 1)).eval x ≠ 0)
     {S : Prop}
-    (hencodes : ∀ a, SnarkRelation urs fs.openedCommitment b (multiopenValue vk ps ch)
+    (hencodes : ∀ a, SnarkRelation urs fs.openedCommitment b (multiopenValue vk instanceCommitment ps ch)
       (circuitSatViaGates fixedCols decodeAdvice decodeInstance y gates hpoly deg) a → S) :
     S := by
+  obtain ⟨a, hrel⟩ := ipaRelation_of_acceptV urs b fs.openedCommitment
+    (multiopenValue vk instanceCommitment ps ch) (projTree fs.tree) hclean
   have hsat : circuitSatViaGates fixedCols decodeAdvice decodeInstance y gates hpoly deg a :=
-    circuitSatViaGates_of_check fixedCols decodeAdvice decodeInstance y gates hpoly deg a x hquot hgood
+    circuitSatViaGates_of_check fixedCols decodeAdvice decodeInstance y gates hpoly deg a x
+      (hquot a hrel) (hgood a hrel)
   exact hencodes a ⟨hrel, hsat⟩
 
 end Zcash.Snark

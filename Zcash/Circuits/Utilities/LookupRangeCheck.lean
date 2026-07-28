@@ -70,20 +70,21 @@ def rangeCheckLookup (K : ℕ) (cfg : Config K) : LookupArgument Fp where
     -- `.scaled z_next 2^K`, NOT `product(const, z_next)`. Spell it `zNext * (2^K : Fp)`.
     [qL * (qR * (zCur - zNext * (2 ^ K : Fp)) + (1 - qR) * zCur)]
   tables := [queryFixed cfg.tableIdx.inner]
+  tablesFree := by
+    simp [Expression.SelectorFree, queryFixed]
+  arity := rfl
 
 /-- The "Short lookup bitshift" gate, ported verbatim from `configure`
 (`lookup_range_check.rs:370-384`). Reads `word` at `Rotation::prev()` (−1), `shifted_word`
 at `Rotation::cur()` (0), `inv_two_pow_s` at `Rotation::next()` (+1); the single constraint
 is `word · 2^K · inv_two_pow_s − shifted_word`. -/
-def bitshiftGate (K : ℕ) (cfg : Config K) : Gate Fp where
-  name := "Short lookup bitshift"
-  selector := cfg.qBitshift
-  constraints :=
-    let word : Expression Fp Query := queryAdvice cfg.runningSum (-1)
-    let shiftedWord : Expression Fp Query := queryAdvice cfg.runningSum 0
-    let invTwoPowS : Expression Fp Query := queryAdvice cfg.runningSum 1
-    Constraints.withSelector cfg.qBitshift
-      [("bitshift", word * (2 ^ K : Fp) * invTwoPowS - shiftedWord)]
+def bitshiftGate (K : ℕ) (cfg : Config K) : Gate Fp :=
+  let word : Expression Fp Query := queryAdvice cfg.runningSum (-1)
+  let shiftedWord : Expression Fp Query := queryAdvice cfg.runningSum 0
+  let invTwoPowS : Expression Fp Query := queryAdvice cfg.runningSum 1
+  Gate.withSelector "Short lookup bitshift" cfg.qBitshift
+    [word, shiftedWord, invTwoPowS]
+    [("bitshift", word * (2 ^ K : Fp) * invTwoPowS - shiftedWord)]
 
 /-- Rust `configure` (`lookup_range_check.rs:313-387`): enable equality on `running_sum`,
 allocate the two complex selectors and the simple `q_bitshift`, take the handed-down
@@ -96,10 +97,16 @@ def configure (K : ℕ) (runningSum : Column .advice) (tableIdx : TableColumn) :
   let qBitshift ← selector
   let cfg : Config K := { qLookup, qRunning, qBitshift, runningSum, tableIdx }
   -- register the lookup: one (input, table) pair, verbatim §1.4
-  lookup [((rangeCheckLookup K cfg).inputs.headI, tableIdx)]
+  lookup [queryAdvice runningSum 0, queryAdvice runningSum 1]
+    [((rangeCheckLookup K cfg).inputs.headI, tableIdx)]
   -- register the bitshift gate
   createGate (bitshiftGate K cfg)
   return cfg
+
+instance (K : ℕ) (runningSum : Column .advice) (tableIdx : TableColumn) :
+    ElaboratedConfigure (configure K runningSum tableIdx) := by
+  unfold configure
+  infer_instance
 
 /-! ## The table loader
 

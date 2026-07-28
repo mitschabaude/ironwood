@@ -1,0 +1,247 @@
+import Zcash.Snark.Soundness.AGM.DeployedX1
+import Zcash.Snark.Soundness.AGM.OnlineMembers
+import Zcash.Snark.Soundness.AGM.DeployedMultiopen
+import Zcash.Snark.Soundness.AGM.DeployedPinnedRoots
+
+/-!
+# Direct `x₄` column representations
+
+The rewind-free decoder needs AGM coordinates for the `x₄` batch columns. The offline route
+interpolates them out of the representation function; this module reads them off the online data
+instead, so the columns feed a computable batch-or-relation decision.
+
+Each column below the pair count is the `x₁`-compressed aggregate of one point set, so its
+coordinates are that set's `x₁` power sum of member representations, which
+`deployedMemberRepresentationsOfCovered` supplies. The last column is the prover's `q′`, which
+carries its own representation.
+-/
+
+namespace Zcash.Snark
+
+open scoped BigOperators
+
+variable {shape : Shape} {basis : AugmentedIndex (2 ^ shape.k) → VestaG}
+
+local instance vestaInhabitedDirectX4 : Inhabited VestaG := ⟨0⟩
+
+
+/-- The set index whose compressed aggregate is `x₄` batch column `j`: the batch reads the pair
+list in reverse. -/
+def x4ColumnSetIndex {G : Type*} [AddCommGroup G] [Module Fp G] [DecidableEq G] [Inhabited G]
+    (vk : VerifyingKey shape Fp G) (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp) (j : ℕ) : ℕ :=
+  deployedX4PairCount vk instanceCommitment ps ch - 1 - j
+
+/-- **The `x₄` batch column below the pair count is the `x₁` power sum of its set's members.**
+This is the commitment identity the column representations are built against, extracted from the
+`x₁` unbatch so both levels share one proof. -/
+theorem x4BatchCommitments_eq_memberPowerSum {G : Type*} [AddCommGroup G] [Module Fp G]
+    [DecidableEq G] [Inhabited G]
+    (urs : URS G) (hk : shape.k = urs.k) (vk : VerifyingKey shape Fp G)
+    (instanceCommitment : Fin shape.numProofs → ℕ → G)
+    (ps : ProofString shape Fp G) (ch : Challenges shape.k Fp)
+    {j : Fin (deployedX4PairCount vk instanceCommitment ps ch + 1)}
+    (hj : (j : ℕ) < deployedX4PairCount vk instanceCommitment ps ch) :
+    x4BatchCommitments urs hk vk instanceCommitment ps ch j
+      = ∑ m : Fin (deployedSetQueries vk instanceCommitment ps ch
+          (x4ColumnSetIndex vk instanceCommitment ps ch
+            (j : ℕ))).length,
+          ch.x1 ^ (m : ℕ) •
+            deployedSetMemberCommitments urs hk vk instanceCommitment ps ch
+              (x4ColumnSetIndex vk instanceCommitment ps ch
+                (j : ℕ)) m := by
+  have hqs : x4ColumnSetIndex vk instanceCommitment ps ch (j : ℕ)
+      < (deployedX4Qs vk instanceCommitment ps ch).length := by
+    have hle : deployedX4PairCount vk instanceCommitment ps ch ≤
+        (deployedX4Qs vk instanceCommitment ps ch).length := by
+      rw [deployedX4PairCount_eq]
+      simp only [deployedX4Pairs, List.length_zip]
+      exact min_le_left _ _
+    have : x4ColumnSetIndex vk instanceCommitment ps ch (j : ℕ)
+        < deployedX4PairCount vk instanceCommitment ps ch := by
+      unfold x4ColumnSetIndex
+      omega
+    omega
+  rw [x4BatchCommitments_getD urs hk vk instanceCommitment ps ch hj]
+  rw [show deployedX4PairCount vk instanceCommitment ps ch - 1 - (j : ℕ)
+      = x4ColumnSetIndex vk instanceCommitment ps ch (j : ℕ) from rfl]
+  rw [deployedX4Qs_getD_eval (hk ▸ urs.g) urs.w urs.u vk instanceCommitment ps ch hqs]
+  rw [← Fin.sum_univ_eq_sum_range (fun m =>
+    ch.x1 ^ m •
+      ((deployedSetQueries vk instanceCommitment ps ch
+        (x4ColumnSetIndex vk instanceCommitment ps ch
+          (j : ℕ))).getD m (.point 0, [])).1.eval
+      ⟨shape.k, hk ▸ urs.g, urs.w, urs.u⟩)]
+  exact Finset.sum_congr rfl fun m _ => by rw [deployedSetMemberCommitments_apply]
+
+/-! ## The direct column representations -/
+
+/-- **AGM coordinates for every `x₄` batch column, read off the online data.** Columns below the
+pair count take the `x₁` power sum of their set's member representations; the final column is the
+prover's `q′`, which carries its own representation. No interpolation, no rewind. -/
+def deployedX4ColumnRepresentationsOfCovered
+    {vk : VerifyingKey shape Fp VestaG}
+    {instanceCommitment : Fin shape.numProofs → ℕ → VestaG}
+    (p : AlgebraicWfProof basis vk instanceCommitment)
+    (fixed : List (AlgebraicPoint (F := Fp) basis))
+    (hcovered : DeployedMembersCovered vk instanceCommitment p.algebraicProof fixed)
+    (nu : Fin 11 → Fp) :
+    AlgebraicColumnRepresentations (ursOfAugmentedBasis shape.k basis)
+      (x4BatchCommitments (ursOfAugmentedBasis shape.k basis) rfl vk instanceCommitment
+        p.proof.1 (chRecord nu (fun _ => 0))) where
+  coeffs := fun j =>
+    if hj : (j : ℕ) < deployedX4PairCount vk instanceCommitment p.proof.1
+        (chRecord nu (fun _ => 0)) then
+      ∑ m : Fin (deployedSetQueries vk instanceCommitment p.proof.1
+          (chRecord nu (fun _ => 0))
+          (x4ColumnSetIndex vk instanceCommitment p.proof.1
+            (chRecord nu (fun _ => 0)) (j : ℕ))).length,
+        (chRecord nu (fun _ => 0)).x1 ^ (m : ℕ) •
+        (deployedMemberRepresentationsOfCovered p fixed hcovered nu
+          (x4ColumnSetIndex vk instanceCommitment p.proof.1 (chRecord nu (fun _ => 0)) (j : ℕ))
+          (by unfold x4ColumnSetIndex; omega)).coeffs m
+    else p.algebraicProof.multiopenQPrime.gPart
+  uComp := fun j =>
+    if hj : (j : ℕ) < deployedX4PairCount vk instanceCommitment p.proof.1
+        (chRecord nu (fun _ => 0)) then
+      ∑ m : Fin (deployedSetQueries vk instanceCommitment p.proof.1
+          (chRecord nu (fun _ => 0))
+          (x4ColumnSetIndex vk instanceCommitment p.proof.1
+            (chRecord nu (fun _ => 0)) (j : ℕ))).length,
+        (chRecord nu (fun _ => 0)).x1 ^ (m : ℕ) *
+        (deployedMemberRepresentationsOfCovered p fixed hcovered nu
+          (x4ColumnSetIndex vk instanceCommitment p.proof.1 (chRecord nu (fun _ => 0)) (j : ℕ))
+          (by unfold x4ColumnSetIndex; omega)).uComp m
+    else p.algebraicProof.multiopenQPrime.coeffs AugmentedIndex.u
+  wComp := fun j =>
+    if hj : (j : ℕ) < deployedX4PairCount vk instanceCommitment p.proof.1
+        (chRecord nu (fun _ => 0)) then
+      ∑ m : Fin (deployedSetQueries vk instanceCommitment p.proof.1
+          (chRecord nu (fun _ => 0))
+          (x4ColumnSetIndex vk instanceCommitment p.proof.1
+            (chRecord nu (fun _ => 0)) (j : ℕ))).length,
+        (chRecord nu (fun _ => 0)).x1 ^ (m : ℕ) *
+        (deployedMemberRepresentationsOfCovered p fixed hcovered nu
+          (x4ColumnSetIndex vk instanceCommitment p.proof.1 (chRecord nu (fun _ => 0)) (j : ℕ))
+          (by unfold x4ColumnSetIndex; omega)).wComp m
+    else p.algebraicProof.multiopenQPrime.coeffs AugmentedIndex.w
+  commitment := by
+    intro j
+    by_cases hj : (j : ℕ) < deployedX4PairCount vk instanceCommitment p.proof.1
+        (chRecord nu (fun _ => 0))
+    · simp only [dif_pos hj]
+      rw [(deployedMemberRepresentationsOfCovered p fixed hcovered nu
+        (x4ColumnSetIndex vk instanceCommitment p.proof.1 (chRecord nu (fun _ => 0)) (j : ℕ))
+        (by unfold x4ColumnSetIndex; omega)).power_commitment
+        (chRecord nu (fun _ => 0)).x1]
+      exact (x4BatchCommitments_eq_memberPowerSum _ rfl vk instanceCommitment _ _ hj).symm
+    · simp only [dif_neg hj]
+      rw [x4BatchCommitments, if_neg hj]
+      exact (AlgebraicPoint.point_eq_components _).symm
+
+/-! ## The direct batch, without interpolation -/
+
+/-- The aggregate coordinates an `AlgebraicWfProof` declares open to the deployed commitment. -/
+theorem aggregate_opens_deployedCommitment
+    {vk : VerifyingKey shape Fp VestaG}
+    {instanceCommitment : Fin shape.numProofs → ℕ → VestaG}
+    (p : AlgebraicWfProof basis vk instanceCommitment) (nu : Fin 11 → Fp) :
+    commit (ursOfAugmentedBasis shape.k basis) (p.aMulti nu)
+        + p.multiU nu • (ursOfAugmentedBasis shape.k basis).u
+        + p.multiBlind nu • (ursOfAugmentedBasis shape.k basis).w
+      = deployedCommitment (ursOfAugmentedBasis shape.k basis) rfl vk instanceCommitment
+          p.proof.1 (chRecord nu (fun _ => 0)) := by
+  rw [p.multiopen_repr nu]
+  exact (deployedCommitment_eq_multiopen vk instanceCommitment p.proof.1 _).symm
+
+/-- **The deployed `x₄` batch, decoded directly.** The columns are read off the online coverage
+and the aggregate equation comes from the proof's own multiopen representation, so the
+batch-or-relation decision needs no offline interpolation — the drop-in replacement for the
+Vandermonde compatibility adapter. -/
+def deployedX4BatchOfCoveredOrRelation
+    {vk : VerifyingKey shape Fp VestaG}
+    {instanceCommitment : Fin shape.numProofs → ℕ → VestaG}
+    (p : AlgebraicWfProof basis vk instanceCommitment)
+    (fixed : List (AlgebraicPoint (F := Fp) basis))
+    (hcovered : DeployedMembersCovered vk instanceCommitment p.algebraicProof fixed)
+    (nu : Fin 11 → Fp) :
+    AlgebraicPowerBatch (ursOfAugmentedBasis shape.k basis)
+        (x4BatchCommitments (ursOfAugmentedBasis shape.k basis) rfl vk instanceCommitment
+          p.proof.1 (chRecord nu (fun _ => 0)))
+        (p.aMulti nu) (p.multiU nu) (p.multiBlind nu)
+        (chRecord (k := shape.k) nu (fun _ => 0)).x4 ⊕'
+      AugmentedRelationWitness (F := Fp) (ursOfAugmentedBasis shape.k basis).g
+        (ursOfAugmentedBasis shape.k basis).u (ursOfAugmentedBasis shape.k basis).w :=
+  deployedX4AlgebraicBatchOrRelation (ursOfAugmentedBasis shape.k basis) rfl vk
+    instanceCommitment p.proof.1 (chRecord nu (fun _ => 0))
+    (deployedX4ColumnRepresentationsOfCovered p fixed hcovered nu)
+    (p.aMulti nu) (p.multiU nu) (p.multiBlind nu)
+    (aggregate_opens_deployedCommitment p nu)
+
+/-! ## The direct outcome provider
+
+The same batch-or-relation walk as the compatibility adapter, with the `x₄` level supplied by the
+direct decode above instead of the offline interpolation. The `x₄` columns come from online
+coverage, the per-set `x₁` columns from the same member representations, and every disagreement
+returns explicit relation coefficients.
+-/
+
+/-
+TODO(#115): Equip this executable direct-coordinate postprocessing with an explicit polynomial
+total-cost bound.  Computability here closes the algorithmic seam; the concrete PPT/runtime bound
+is a separate obligation from counting black-box adversary calls.
+-/
+
+/-- **The deployed root outcome, decoded directly.** It needs no field-capacity hypothesis,
+because it never chooses ghost evaluation points. -/
+def deployedRootOutcomeOfCovered
+    (family : ComputedOnlineMemberFSFamily shape) :
+    DeployedRootOutcomeProvider family.toFamily := by
+  intro basis O
+  let pnu := (wrappedAdversary family.toFamily basis).run O
+  let p := pnu.1
+  let nu := wrappedPreIpaReads pnu
+  have hp : p = (family.adversary basis).run O :=
+    wrappedAdversary_run_fst family.toFamily basis O
+  have hcovered : DeployedMembersCovered (family.vk basis)
+      (family.instanceCommitment basis) p.algebraicProof
+      (family.fixedRepresentations basis) := by
+    rw [hp]; exact family.membersCovered basis O
+  have hcanonical : CanonicalOnlineMultiopenCoordinates p
+      (family.fixedRepresentations basis) := by
+    rw [hp]; exact family.canonical basis O
+  cases deployedX4BatchOfCoveredOrRelation p (family.fixedRepresentations basis) hcovered nu with
+  | inr relation => exact PSum.inr relation
+  | inl x4Batch =>
+      let count := deployedX4PairCount (family.vk basis) (family.instanceCommitment basis)
+        p.proof.1 (wrappedPreIpaRecord pnu)
+      let x1Result := fun i : Fin count =>
+        deployedX1BatchOfCoveredWithSourceOrRelation p (family.fixedRepresentations basis)
+          hcovered nu x4Batch i i.isLt
+      cases hall : finForallOrRelationWitness x1Result with
+      | inr relation => exact PSum.inr relation
+      | inl results =>
+          let x1 := fun (i : Nat) (hi : i < count) => (results ⟨i, hi⟩).batch
+          exact PSum.inl
+            { fixedRepresentations := family.fixedRepresentations basis
+              canonical := hcanonical
+              membersCovered := hcovered
+              batches := { x4 := x4Batch, x1 := x1 }
+              memberCoeffs := fun i hi => (results ⟨i, hi⟩).coeffs_eq
+              memberU := fun i hi => (results ⟨i, hi⟩).uComp_eq
+              memberW := fun i hi => (results ⟨i, hi⟩).wComp_eq }
+
+/-- **A deployed root family on the direct route.** The outcome is decoded from online coverage,
+so no field-capacity hypothesis is needed and no ghost evaluation points are chosen. Its
+chronology input is the staged root trace; exact leave-one-squeeze invariance is derived from that
+trace. Reverse unbatching may depend on later challenges. -/
+def ComputedDeployedRootFSFamily.ofCovered
+    (family : ComputedOnlineMemberFSFamily shape)
+    (trace : DeployedRootOnlineTrace family.toFamily
+      (deployedRootOutcomeOfCovered family)) :
+    ComputedDeployedRootFSFamily shape where
+  toComputedOnlineMemberFSFamily := family
+  outcome := deployedRootOutcomeOfCovered family
+  rootTrace := trace
+
+end Zcash.Snark

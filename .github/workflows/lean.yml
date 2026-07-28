@@ -54,9 +54,35 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           persist-credentials: false
+      # Content-pins the checked-in circuit VK fixtures (the `.json` CS/layout dumps
+      # consumed by `CircuitCheck`). The Lean build does not recompute a hash — there
+      # is no fast SHA-256 in the toolchain — so this OS `sha256sum -c` is the
+      # cryptographic drift/tamper guard, complementing the `TestVk*` reconstruction that
+      # checks the fixtures against the Lean circuit model. See `Zcash/Circuits/Fixtures/`.
+      # The first `diff` fails if SHA256SUMS does not list *exactly* the committed `.json`
+      # fixtures, so a newly added fixture can never slip in content-unpinned. The last one
+      # fails if `Stamp.lean` — the pins rendered as Lean data, which is what carries a
+      # fixture change into Lake's import graph — is stale against SHA256SUMS; without it a
+      # refreshed fixture could keep the stale stamp and go on skipping the `#eval` locally.
+      - name: Verify circuit fixture content hashes
+        working-directory: Zcash/Circuits/Fixtures
+        run: |
+          diff <(ls *.json | sort) <(awk '{print $2}' SHA256SUMS | sort) \
+            || { echo "::error::SHA256SUMS must list exactly the committed *.json fixtures"; exit 1; }
+          sha256sum -c SHA256SUMS
+          diff Stamp.lean <(./stamp.sh) \
+            || { echo "::error::Stamp.lean is stale; regenerate with ./stamp.sh > Stamp.lean"; exit 1; }
+      # Every @[csimp] replacement lemma must have its own assert_axioms entry in
+      # Zcash/TrustBoundary.lean: csimp-proof axioms are not propagated into downstream
+      # native_decide axiom tracking (lean4#7463).
+      - name: Verify csimp lemmas are axiom-censused
+        run: scripts/check_csimp_census.sh
       # Installs the toolchain from lean-toolchain, fetches the Mathlib olean
-      # cache, and runs plain `lake build`, which builds
-      # `defaultTargets = ["Zcash", "FixtureCheck"]`. Building `FixtureCheck`
+      # cache, and runs `lake build --wfail`, which rejects all warnings and builds
+      # the lakefile's `defaultTargets`. Building `FixtureCheck` also covers the
+      # deployed Action/Vesta capstone lane, whose `Keygen/Certificate.lean`
+      # natively certifies the deployed verifying key against the derivation
+      # (~45 s), and it
       # elaborates `Zcash.Snark.Fingerprint.Fixture`, whose
       # `fingerprint_matches := by native_decide` compiles and *runs* the Lean
       # verifier `assemble` on the captured proof. This is the authoritative,
@@ -64,6 +90,8 @@ jobs:
       # fails to compile), and `Zcash.Snark.Fingerprint.TrustBoundary`
       # additionally pins the theorem's sorry-freeness and axiom set.
       - uses: leanprover/lean-action@38fbc41a8c28c4cbaec22d7f7de508ec2e7c0dd9 # v1.5.0
+        with:
+          build-args: "--wfail"
 
   lean-ci:
     # The single stable check to mark as a required status check. It always

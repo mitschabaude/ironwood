@@ -4,32 +4,32 @@ import Zcash.Snark.Soundness.Forking.Probability
 /-!
 # From relation probability to DL probability
 
-`Soundness.AGM.Adapter` extracts a discrete log when a relation hits a fixed challenge slot. This
-module proves the probability loss from choosing that slot uniformly.
+`Soundness.AGM.Adapter` extracts the challenge's discrete log from a relation whose challenge
+component is nonzero. This module prices that reduction: relation finding costs the textbook DL
+advantage plus `1/|F|`.
 
 ## Experiment
 
-Sample scalars `s : ι → F` and present the basis `s i • B`. Independently sample a challenge slot
-`c`. The basis does not depend on `c`, and the reduction knows the logs of every slot.
+The textbook DL game supplies the challenge `z • B` for uniform `z`. The reduction draws fresh
+uniform pairs `(x i, y i)` and presents the basis whose slot `i` has log `x i + z * y i`. It
+solves for the challenge unless the returned relation annihilates `y` (Lemma 3 of Jaeger–Tessaro,
+<https://eprint.iacr.org/2020/1213>).
 
 ## What is proven
 
-* `hitProb_ge_inv_card`: a uniform slot hits a fixed nontrivial relation with probability at least
-  `1 / |ι|`.
-* `reduction_advantage_ge`: `Pr[relation] / |ι| ≤ Pr[DL solved]`.
-* `relation_prob_le_of_DL`: DL hardness bounds relation finding by `|ι| · bound`.
-
-## Tightness
-
-The fixed-slot construction loses a factor `|ι|` (`2 ^ k + 2` for the deployed augmented basis).
-No tighter relation-to-DL reduction is proved in this module.
+* `programmedRelSet_card`: the simulation is perfect — the relation event on programmed coins has
+  exactly the honest relation probability.
+* `missSet_card_le`: annihilation costs at most a `1/|F|` fraction of the coins.
+* `relation_prob_le_of_textbookDL`: textbook DL hardness bounds relation finding by
+  `bound + 1/|F|`. No multiplicative factor appears; the fixed-slot reduction this replaces
+  guessed the challenge slot and paid `|ι|`.
 
 ## Boundary
 
 The relation finder `A` is a deterministic total function. These are information-theoretic counting
-theorems; efficiency is modeled outside Lean. `Soundness.AGM.Capstone` supplies the deployed finder,
-and `.ProbabilityVesta` specializes the bounds. Plain-DL hardness, the AGM, and the generator
-random-oracle model remain assumptions at those boundaries.
+theorems; efficiency is modeled outside Lean. `Soundness.AGM.Capstone` supplies the deployed finder
+and `.ProbabilityVesta` specializes the bounds; plain-DL hardness, the AGM, and the generator
+random-oracle model remain assumptions there.
 -/
 
 open scoped ENNReal
@@ -39,26 +39,23 @@ namespace Zcash.Snark
 
 variable {F G : Type*} [Field F] [AddCommGroup G] [Module F G]
 
-/-- A uniform challenge slot hits a fixed nontrivial relation with probability at least `1 / |ι|`. -/
-theorem hitProb_ge_inv_card {ι : Type*} [Fintype ι] [DecidableEq ι] [Nonempty ι]
-    {basis : ι → G} (r : AlgebraicRelationWitness (F := F) basis) :
-    (1 : ℝ≥0∞) / Fintype.card ι
-      ≤ (PMF.uniformOfFintype ι).toOuterMeasure r.nonzeroCoeffSlots := by
-  rw [uniformOfFintype_toOuterMeasure_finset]
-  gcongr
-  have : 0 < r.nonzeroCoeffSlots.card := Finset.card_pos.mpr r.nonzeroCoeffSlots_nonempty
-  exact_mod_cast this
-
 section Reduction
 variable {ι : Type*} [Fintype ι] [DecidableEq ι] [Nonempty ι] [Fintype F] (B : G)
 
 /-- The public basis whose slot `i` is `s i • B`. -/
 def scalarBasis (s : ι → F) : ι → G := fun i => s i • B
 
-/-- The fixed-slot embedding is available by construction: with `logs := s`, `known` is `rfl`. -/
-def scalarEmbedding (s : ι → F) (c : ι) :
-    FixedSlotEmbedding (F := F) B (scalarBasis B s) c :=
-  { logs := s, known := fun _ _ => rfl }
+/-- The slot logs the reduction presents, for programming pairs `(x, y)` and challenge log `z`. -/
+def programmedLogs (z : F) (x y : ι → F) : ι → F := fun i => x i + z * y i
+
+omit [DecidableEq ι] [Nonempty ι] [Fintype F] in
+/-- The presented basis carries its programming: slot `i` is `x i • B + y i • (z • B)`. -/
+def programmedEmbedding (z : F) (x y : ι → F) :
+    ProgrammedBasisEmbedding (F := F) B (z • B) (scalarBasis B (programmedLogs z x y)) :=
+  { x := x
+    y := y
+    programmed := fun i => by
+      simp [scalarBasis, programmedLogs, add_smul, mul_comm z (y i), mul_smul] }
 
 variable (A : (b : ι → G) → Option (AlgebraicRelationWitness (F := F) b))
 
@@ -66,134 +63,237 @@ variable (A : (b : ι → G) → Option (AlgebraicRelationWitness (F := F) b))
 noncomputable def relSet : Finset (ι → F) :=
   Finset.univ.filter (fun s => (A (scalarBasis B s)).isSome)
 
-/-- Scalar vectors and challenge slots where `A` returns a relation that hits the slot. -/
-noncomputable def succSet : Finset ((ι → F) × ι) :=
-  Finset.univ.filter (fun p => ∃ r, A (scalarBasis B p.1) = some r ∧ r.coeffs p.2 ≠ 0)
+/-! ### The programmed experiment
+
+Reduction coins `(z, x, y)`: the challenge log and the two programming vectors. The finder runs on
+the presented logs `programmedLogs z x y`. -/
+
+/-- The coefficients of the relation returned on presented logs `s`; zero when none returns. -/
+def returnedCoeffs (s : ι → F) : ι → F :=
+  (A (scalarBasis B s)).elim 0 (fun r => r.coeffs)
+
+omit [DecidableEq ι] [Nonempty ι] [Fintype F] in
+/-- `returnedCoeffs` reads off the coefficients of the relation actually returned. -/
+theorem returnedCoeffs_of_eq_some {s : ι → F}
+    {r : AlgebraicRelationWitness (F := F) (scalarBasis B s)}
+    (hr : A (scalarBasis B s) = some r) :
+    returnedCoeffs B A s = r.coeffs := by
+  simp [returnedCoeffs, hr]
+
+/-- A pivot slot where the returned relation has nonzero coefficient; arbitrary when none
+returns. -/
+noncomputable def pivotSlot (s : ι → F) : ι :=
+  (A (scalarBasis B s)).elim (Classical.arbitrary ι) (fun r => r.exists_nonzero_coeff.choose)
+
+omit [DecidableEq ι] [Fintype F] in
+/-- The pivot slot's coefficient is nonzero whenever a relation returns. -/
+theorem returnedCoeffs_pivotSlot_ne_zero {s : ι → F}
+    (hsome : (A (scalarBasis B s)).isSome) :
+    returnedCoeffs B A s (pivotSlot B A s) ≠ 0 := by
+  obtain ⟨r, hr⟩ := Option.isSome_iff_exists.mp hsome
+  rw [returnedCoeffs_of_eq_some B A hr]
+  simp only [pivotSlot, hr, Option.elim_some]
+  exact r.exists_nonzero_coeff.choose_spec
+
+/-- Programmed coins on which `A` returns a relation. -/
+noncomputable def programmedRelSet : Finset (F × (ι → F) × (ι → F)) :=
+  Finset.univ.filter (fun t =>
+    (A (scalarBasis B (programmedLogs t.1 t.2.1 t.2.2))).isSome)
+
+/-- Winning coins: the returned relation's component against `y` is nonzero, so
+`discreteLogOfChallenge_of_relation` computes the discrete log of `z • B`. -/
+noncomputable def winSet : Finset (F × (ι → F) × (ι → F)) :=
+  Finset.univ.filter (fun t =>
+    (A (scalarBasis B (programmedLogs t.1 t.2.1 t.2.2))).isSome ∧
+      (∑ i, returnedCoeffs B A (programmedLogs t.1 t.2.1 t.2.2) i * t.2.2 i) ≠ 0)
+
+/-- Failing coins: the returned relation annihilates the challenge programming `y`. -/
+noncomputable def missSet : Finset (F × (ι → F) × (ι → F)) :=
+  Finset.univ.filter (fun t =>
+    (A (scalarBasis B (programmedLogs t.1 t.2.1 t.2.2))).isSome ∧
+      (∑ i, returnedCoeffs B A (programmedLogs t.1 t.2.1 t.2.2) i * t.2.2 i) = 0)
 
 omit [Nonempty ι] in
-/-- Every relation-producing scalar vector has at least one challenge slot that solves DL. -/
-theorem relSet_card_le_succSet_card :
-    (relSet B A).card ≤ (succSet B A).card := by
-  have hsub : relSet B A ⊆ Finset.image Prod.fst (succSet B A) := by
-    intro s hs
-    simp only [relSet, Finset.mem_filter, Finset.mem_univ, true_and] at hs
-    obtain ⟨r, hr⟩ := Option.isSome_iff_exists.mp hs
-    obtain ⟨c, hc⟩ := r.nonzeroCoeffSlots_nonempty
-    rw [Finset.mem_image]
-    refine ⟨(s, c), ?_, rfl⟩
-    simp only [succSet, Finset.mem_filter, Finset.mem_univ, true_and]
-    exact ⟨r, hr, (r.mem_nonzeroCoeffSlots c).mp hc⟩
-  calc (relSet B A).card
-        ≤ (Finset.image Prod.fst (succSet B A)).card := Finset.card_le_card hsub
-    _ ≤ (succSet B A).card := Finset.card_image_le
-
-/-- The DL-solving probability is at least the relation probability divided by `|ι|`. -/
-theorem reduction_advantage_ge :
-    (1 : ℝ≥0∞) / Fintype.card ι
-        * (PMF.uniformOfFintype (ι → F)).toOuterMeasure (relSet B A)
-      ≤ (PMF.uniformOfFintype ((ι → F) × ι)).toOuterMeasure (succSet B A) := by
-  haveI : Nonempty (ι → F) := ⟨fun _ => 0⟩
-  rw [uniformOfFintype_toOuterMeasure_finset, uniformOfFintype_toOuterMeasure_finset,
-    Fintype.card_prod]
-  have hcard : ((relSet B A).card : ℝ≥0∞) ≤ (succSet B A).card := by
-    exact_mod_cast relSet_card_le_succSet_card B A
-  have hn0 : (Fintype.card (ι → F) : ℝ≥0∞) ≠ 0 := by exact_mod_cast Fintype.card_ne_zero
-  have hn_top : (Fintype.card (ι → F) : ℝ≥0∞) ≠ ⊤ := ENNReal.natCast_ne_top _
-  rw [one_div, div_eq_mul_inv, div_eq_mul_inv, Nat.cast_mul,
-    ENNReal.mul_inv (Or.inl hn0) (Or.inl hn_top)]
-  calc (Fintype.card ι : ℝ≥0∞)⁻¹ * ((relSet B A).card * (Fintype.card (ι → F) : ℝ≥0∞)⁻¹)
-        = (relSet B A).card
-            * ((Fintype.card (ι → F) : ℝ≥0∞)⁻¹ * (Fintype.card ι : ℝ≥0∞)⁻¹) := by ac_rfl
-    _ ≤ (succSet B A).card
-            * ((Fintype.card (ι → F) : ℝ≥0∞)⁻¹ * (Fintype.card ι : ℝ≥0∞)⁻¹) := by gcongr
-
-/-- The reduction's probability of solving the embedded challenge is at most `bound`.
-
-This is not yet textbook DL hardness because the experiment samples all slot logs. Use
-`TextbookDLAdvantageLE` for the standard DL game. -/
-def DLAdvantageLE (bound : ℝ≥0∞) : Prop :=
-  (PMF.uniformOfFintype ((ι → F) × ι)).toOuterMeasure (succSet B A) ≤ bound
-
-/-- Bound relation finding by `|ι| · bound` from a bound on the embedded DL game. -/
-theorem relation_prob_le_of_DL {bound : ℝ≥0∞} (h : DLAdvantageLE B A bound) :
-    (PMF.uniformOfFintype (ι → F)).toOuterMeasure (relSet B A) ≤ Fintype.card ι * bound := by
-  have hm0 : (Fintype.card ι : ℝ≥0∞) ≠ 0 := by exact_mod_cast Fintype.card_ne_zero
-  have hm_top : (Fintype.card ι : ℝ≥0∞) ≠ ⊤ := ENNReal.natCast_ne_top _
-  have hstep : (1 : ℝ≥0∞) / Fintype.card ι
-      * (PMF.uniformOfFintype (ι → F)).toOuterMeasure (relSet B A) ≤ bound :=
-    le_trans (reduction_advantage_ge B A) h
-  have hmul : (Fintype.card ι : ℝ≥0∞)
-      * ((1 : ℝ≥0∞) / Fintype.card ι
-          * (PMF.uniformOfFintype (ι → F)).toOuterMeasure (relSet B A))
-      ≤ Fintype.card ι * bound := by gcongr
-  rwa [one_div, ← mul_assoc, ENNReal.mul_inv_cancel hm0 hm_top, one_mul] at hmul
-
-/-! ### Reduction to textbook single-generator discrete log
-
-The textbook game supplies `x • B`. The reduction places it in a uniform slot and generates the
-other slots. The map `(x, c, s') ↦ (Function.update s' c x, c)` shows that this game has the same
-success probability as the embedded game.
--/
-
-/-- Winning coins for the textbook DL reduction: secret `x`, challenge slot `c`, and other slot logs
-`s'`. -/
-noncomputable def winSet : Finset (F × ι × (ι → F)) :=
-  Finset.univ.filter (fun t => (Function.update t.2.2 t.2.1 t.1, t.2.1) ∈ succSet B A)
+/-- Every relation-producing programmed coin wins or lands in the annihilation hyperplane. -/
+theorem programmedRelSet_subset_win_union_miss :
+    programmedRelSet B A ⊆ winSet B A ∪ missSet B A := by
+  intro t ht
+  simp only [programmedRelSet, Finset.mem_filter, Finset.mem_univ, true_and] at ht
+  rcases eq_or_ne
+      (∑ i, returnedCoeffs B A (programmedLogs t.1 t.2.1 t.2.2) i * t.2.2 i) 0 with h0 | h0
+  · exact Finset.mem_union_right _ (by
+      simp only [missSet, Finset.mem_filter, Finset.mem_univ, true_and]
+      exact ⟨ht, h0⟩)
+  · exact Finset.mem_union_left _ (by
+      simp only [winSet, Finset.mem_filter, Finset.mem_univ, true_and]
+      exact ⟨ht, h0⟩)
 
 omit [Nonempty ι] in
-/-- The winning-coins set has `|F|` elements for each element of `succSet`. -/
-theorem winSet_card :
-    (winSet B A).card = (succSet B A).card * Fintype.card F := by
-  rw [← Finset.card_univ (α := F), ← Finset.card_product]
+/-- Perfect simulation: for each honest log vector in the relation event, the programmed coins
+hitting it are exactly the free choices of `(z, y)`. -/
+theorem programmedRelSet_card :
+    (programmedRelSet B A).card = (relSet B A).card * Fintype.card (F × (ι → F)) := by
+  rw [← Finset.card_univ (α := F × (ι → F)), ← Finset.card_product]
   refine Finset.card_bij'
-    (fun t _ => ((Function.update t.2.2 t.2.1 t.1, t.2.1), t.2.2 t.2.1))
-    (fun p _ => (p.1.1 p.1.2, p.1.2, Function.update p.1.1 p.1.2 p.2))
+    (fun t _ => (programmedLogs t.1 t.2.1 t.2.2, (t.1, t.2.2)))
+    (fun p _ => (p.2.1, fun i => p.1 i - p.2.1 * p.2.2 i, p.2.2))
     ?hi ?hj ?left ?right
   case hi =>
-    rintro ⟨x, c, s'⟩ ht
-    simp only [winSet, Finset.mem_filter, Finset.mem_univ, true_and] at ht
+    rintro ⟨z, x, y⟩ ht
+    simp only [programmedRelSet, Finset.mem_filter, Finset.mem_univ, true_and] at ht
     simp only [Finset.mem_product, Finset.mem_univ, and_true]
+    simp only [relSet, Finset.mem_filter, Finset.mem_univ, true_and]
     exact ht
   case hj =>
-    rintro ⟨⟨s, c⟩, t⟩ hp
-    simp only [Finset.mem_product, Finset.mem_univ, and_true] at hp
-    simp only [winSet, Finset.mem_filter, Finset.mem_univ, true_and,
-      Function.update_idem, Function.update_eq_self]
+    rintro ⟨s, z, y⟩ hp
+    simp only [Finset.mem_product, Finset.mem_univ, and_true, relSet, Finset.mem_filter,
+      true_and] at hp
+    simp only [programmedRelSet, Finset.mem_filter, Finset.mem_univ, true_and]
+    have hs : programmedLogs z (fun i => s i - z * y i) y = s := by
+      funext i
+      simp [programmedLogs]
+    rw [hs]
     exact hp
   case left =>
-    rintro ⟨x, c, s'⟩ _
-    simp only [Function.update_self, Function.update_idem, Function.update_eq_self]
+    rintro ⟨z, x, y⟩ _
+    simp only [Prod.mk.injEq, true_and, and_true]
+    funext i
+    simp [programmedLogs]
   case right =>
-    rintro ⟨⟨s, c⟩, t⟩ _
-    simp only [Function.update_self, Function.update_idem, Function.update_eq_self]
+    rintro ⟨s, z, y⟩ _
+    simp only [Prod.mk.injEq, and_true]
+    funext i
+    simp [programmedLogs]
 
-/-- The textbook reduction and embedded game have the same success probability. -/
-theorem textbook_winProb_eq_succProb :
-    (PMF.uniformOfFintype (F × ι × (ι → F))).toOuterMeasure (winSet B A)
-      = (PMF.uniformOfFintype ((ι → F) × ι)).toOuterMeasure (succSet B A) := by
-  haveI : Nonempty (ι → F) := ⟨fun _ => 0⟩
-  rw [uniformOfFintype_toOuterMeasure_finset, uniformOfFintype_toOuterMeasure_finset, winSet_card]
-  have hcard : Fintype.card (F × ι × (ι → F))
-      = Fintype.card F * Fintype.card ((ι → F) × ι) := by
-    simp only [Fintype.card_prod]; ring
-  rw [hcard]
-  push_cast
-  rw [mul_comm ((succSet B A).card : ℝ≥0∞) (Fintype.card F : ℝ≥0∞),
-    ENNReal.mul_div_mul_left _ _
-      (by exact_mod_cast Fintype.card_ne_zero) (ENNReal.natCast_ne_top _)]
+/-- Annihilation costs at most a `1/|F|` slice of the coins: stash the challenge log in the
+returned relation's pivot slot of `y`, which the hyperplane equation recovers, so the coins embed
+into one fewer field factor. -/
+theorem missSet_card_le :
+    (missSet B A).card ≤ Fintype.card ((ι → F) × (ι → F)) := by
+  rw [← Finset.card_univ]
+  refine Finset.card_le_card_of_injOn
+    (fun t => (programmedLogs t.1 t.2.1 t.2.2,
+      Function.update t.2.2 (pivotSlot B A (programmedLogs t.1 t.2.1 t.2.2)) t.1))
+    (fun _ _ => Finset.mem_univ _) ?_
+  rintro ⟨z, x, y⟩ ht ⟨z', x', y'⟩ ht' heq
+  simp only [Finset.mem_coe, missSet, Finset.mem_filter, Finset.mem_univ, true_and] at ht ht'
+  obtain ⟨hsome, hmiss⟩ := ht
+  obtain ⟨hsome', hmiss'⟩ := ht'
+  dsimp only at heq
+  rw [Prod.mk.injEq] at heq
+  obtain ⟨hs', hupd⟩ := heq
+  have hs : programmedLogs z' x' y' = programmedLogs z x y := hs'.symm
+  rw [hs] at hsome' hmiss' hupd
+  set j := pivotSlot B A (programmedLogs z x y) with hj
+  have hz : z = z' := by
+    have := congrFun hupd j
+    simpa [Function.update_self] using this
+  have hyoff : ∀ i, i ≠ j → y i = y' i := by
+    intro i hi
+    have := congrFun hupd i
+    simpa [Function.update_of_ne hi] using this
+  have hcj : returnedCoeffs B A (programmedLogs z x y) j ≠ 0 :=
+    returnedCoeffs_pivotSlot_ne_zero B A hsome
+  have hyj : y j = y' j := by
+    have h1 : returnedCoeffs B A (programmedLogs z x y) j * y j +
+        ∑ i ∈ Finset.univ.erase j, returnedCoeffs B A (programmedLogs z x y) i * y i = 0 :=
+      (Finset.add_sum_erase Finset.univ
+        (fun i => returnedCoeffs B A (programmedLogs z x y) i * y i)
+        (Finset.mem_univ j)).trans hmiss
+    have h2 : returnedCoeffs B A (programmedLogs z x y) j * y' j +
+        ∑ i ∈ Finset.univ.erase j, returnedCoeffs B A (programmedLogs z x y) i * y' i = 0 :=
+      (Finset.add_sum_erase Finset.univ
+        (fun i => returnedCoeffs B A (programmedLogs z x y) i * y' i)
+        (Finset.mem_univ j)).trans hmiss'
+    have herase : (∑ i ∈ Finset.univ.erase j,
+          returnedCoeffs B A (programmedLogs z x y) i * y i)
+        = ∑ i ∈ Finset.univ.erase j, returnedCoeffs B A (programmedLogs z x y) i * y' i :=
+      Finset.sum_congr rfl fun i hi => by
+        rw [hyoff i (Finset.ne_of_mem_erase hi)]
+    rw [herase] at h1
+    exact mul_left_cancel₀ hcj (add_right_cancel (h1.trans h2.symm))
+  have hy : y = y' := by
+    funext i
+    rcases eq_or_ne i j with hi | hi
+    · rw [hi]; exact hyj
+    · exact hyoff i hi
+  have hx : x = x' := by
+    funext i
+    have := congrFun hs.symm i
+    simp only [programmedLogs] at this
+    rw [hz, hy] at this
+    exact add_right_cancel this
+  simp only [Prod.mk.injEq]
+  exact ⟨hz, hx, hy⟩
 
-/-- The reduction built from `A` wins the textbook single-generator DL game with probability at most
-`bound`. -/
+/-! ### Reduction to textbook single-generator discrete log -/
+
+/-- The reduction built from `A` wins the textbook single-generator DL game with probability at
+most `bound`. Its winning coins are those on which `discreteLogOfChallenge_of_relation`, applied
+to `programmedEmbedding`, computes the discrete log of `z • B`. -/
 def TextbookDLAdvantageLE (bound : ℝ≥0∞) : Prop :=
-  (PMF.uniformOfFintype (F × ι × (ι → F))).toOuterMeasure (winSet B A) ≤ bound
+  (PMF.uniformOfFintype (F × (ι → F) × (ι → F))).toOuterMeasure (winSet B A) ≤ bound
 
-/-- Under textbook DL hardness, relation finding has probability at most `|ι| · bound`. -/
+/-- Under textbook DL hardness, relation finding has probability at most `bound + 1/|F|` — the
+tight Jaeger–Tessaro form, with no multiplicative loss. -/
 theorem relation_prob_le_of_textbookDL {bound : ℝ≥0∞} (h : TextbookDLAdvantageLE B A bound) :
-    (PMF.uniformOfFintype (ι → F)).toOuterMeasure (relSet B A) ≤ Fintype.card ι * bound := by
-  refine relation_prob_le_of_DL B A ?_
-  show (PMF.uniformOfFintype ((ι → F) × ι)).toOuterMeasure (succSet B A) ≤ bound
-  rw [← textbook_winProb_eq_succProb]
-  exact h
+    (PMF.uniformOfFintype (ι → F)).toOuterMeasure (relSet B A)
+      ≤ bound + 1 / Fintype.card F := by
+  haveI : Nonempty (ι → F) := ⟨fun _ => 0⟩
+  have hM0 : (Fintype.card ((ι → F) × (ι → F)) : ℝ≥0∞) ≠ 0 := by
+    exact_mod_cast Fintype.card_ne_zero
+  have hMtop : (Fintype.card ((ι → F) × (ι → F)) : ℝ≥0∞) ≠ ⊤ := ENNReal.natCast_ne_top _
+  have hC0 : (Fintype.card (F × (ι → F)) : ℝ≥0∞) ≠ 0 := by
+    exact_mod_cast Fintype.card_ne_zero
+  have hCtop : (Fintype.card (F × (ι → F)) : ℝ≥0∞) ≠ ⊤ := ENNReal.natCast_ne_top _
+  have hwin : ((winSet B A).card : ℝ≥0∞) / Fintype.card (F × (ι → F) × (ι → F)) ≤ bound := by
+    rw [← uniformOfFintype_toOuterMeasure_finset]
+    exact h
+  have hmiss : ((missSet B A).card : ℝ≥0∞) / Fintype.card (F × (ι → F) × (ι → F))
+      ≤ 1 / Fintype.card F := by
+    have hcard : ((missSet B A).card : ℝ≥0∞) ≤ Fintype.card ((ι → F) × (ι → F)) := by
+      exact_mod_cast missSet_card_le B A
+    have hN : (Fintype.card (F × (ι → F) × (ι → F)) : ℝ≥0∞)
+        = (Fintype.card ((ι → F) × (ι → F)) : ℝ≥0∞) * Fintype.card F := by
+      push_cast [Fintype.card_prod]
+      ring
+    calc ((missSet B A).card : ℝ≥0∞) / Fintype.card (F × (ι → F) × (ι → F))
+        ≤ (Fintype.card ((ι → F) × (ι → F)) : ℝ≥0∞)
+            / Fintype.card (F × (ι → F) × (ι → F)) := by gcongr
+      _ = 1 / Fintype.card F := by
+          rw [hN]
+          calc (Fintype.card ((ι → F) × (ι → F)) : ℝ≥0∞)
+                / ((Fintype.card ((ι → F) × (ι → F)) : ℝ≥0∞) * Fintype.card F)
+              = (Fintype.card ((ι → F) × (ι → F)) : ℝ≥0∞) * 1
+                  / ((Fintype.card ((ι → F) × (ι → F)) : ℝ≥0∞) * Fintype.card F) := by
+                rw [mul_one]
+            _ = 1 / Fintype.card F := ENNReal.mul_div_mul_left _ _ hM0 hMtop
+  have hrel : (PMF.uniformOfFintype (ι → F)).toOuterMeasure (relSet B A)
+      = ((programmedRelSet B A).card : ℝ≥0∞)
+          / Fintype.card (F × (ι → F) × (ι → F)) := by
+    rw [uniformOfFintype_toOuterMeasure_finset, programmedRelSet_card]
+    have hN : (Fintype.card (F × (ι → F) × (ι → F)) : ℝ≥0∞)
+        = (Fintype.card (F × (ι → F)) : ℝ≥0∞) * Fintype.card (ι → F) := by
+      push_cast [Fintype.card_prod]
+      ring
+    rw [hN]
+    push_cast
+    rw [mul_comm ((relSet B A).card : ℝ≥0∞) (Fintype.card (F × (ι → F)) : ℝ≥0∞),
+      ENNReal.mul_div_mul_left _ _ hC0 hCtop]
+  have hsplit : ((programmedRelSet B A).card : ℝ≥0∞)
+      ≤ ((winSet B A).card : ℝ≥0∞) + ((missSet B A).card : ℝ≥0∞) := by
+    exact_mod_cast le_trans
+      (Finset.card_le_card (programmedRelSet_subset_win_union_miss B A))
+      (Finset.card_union_le _ _)
+  calc (PMF.uniformOfFintype (ι → F)).toOuterMeasure (relSet B A)
+      = ((programmedRelSet B A).card : ℝ≥0∞)
+          / Fintype.card (F × (ι → F) × (ι → F)) := hrel
+    _ ≤ (((winSet B A).card : ℝ≥0∞) + ((missSet B A).card : ℝ≥0∞))
+          / Fintype.card (F × (ι → F) × (ι → F)) := by gcongr
+    _ = ((winSet B A).card : ℝ≥0∞) / Fintype.card (F × (ι → F) × (ι → F))
+          + ((missSet B A).card : ℝ≥0∞) / Fintype.card (F × (ι → F) × (ι → F)) := by
+        rw [← ENNReal.div_add_div_same]
+    _ ≤ bound + 1 / Fintype.card F := add_le_add hwin hmiss
 
 end Reduction
 

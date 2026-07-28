@@ -178,7 +178,6 @@ noncomputable def recursiveForkEscape {F : Type*} [Zero F] (good : F → Prop) :
 /-- A recursive extractor escape set contains at most three challenges. -/
 theorem recursiveForkEscape_subset_triple {F : Type*} [Zero F]
     (good : F → Prop) : ∃ a b : F, recursiveForkEscape good ⊆ {0, a, b} := by
-  classical
   by_cases hthree : ThreeForkSuccess good
   · refine ⟨0, 0, ?_⟩
     rw [recursiveForkEscape, if_pos hthree]
@@ -674,7 +673,6 @@ theorem recursiveAlgebraicFork_runs_le
   exact recursiveAlgebraicForkFrom_runs_le basis k A prefixes rounds final win decideWin
     (Fintype.card F) 0 (by omega) O (A.run O) tape.toCoins tape.toCoins_bounded
 
-open Classical in
 /-- The complete-tape expectation is at most `(2·|F|+1)^k`, not polynomial AFK. -/
 theorem recursiveAlgebraicFork_sum_runs_le_unconditional
     (basis : ι → G) (k : ℕ)
@@ -693,7 +691,6 @@ theorem recursiveAlgebraicFork_sum_runs_le_unconditional
         recursiveAlgebraicFork_runs_le basis k A prefixes rounds final win decideWin O tape)
     _ = _ := by rw [Finset.sum_const, Finset.card_univ, smul_eq_mul, Nat.mul_comm]
 
-open Classical in
 /-- The unconditional run bound over uniform oracle-table and extractor-tape coins. -/
 theorem recursiveAlgebraicFork_oracle_tape_sum_runs_le_unconditional [Fintype T]
     (basis : ι → G) (k : ℕ)
@@ -1110,7 +1107,6 @@ noncomputable def recursiveForkEscapeSet
     (decideWin : ∀ O p, Decidable (win O p))
     (D : PrefixDecode T k prefixes) (root : RecursiveForkCoins F k) :
     T → (T → F) → Set F := by
-  classical
   intro t O
   if hm : D.roundOf t < k then
     let j : Fin k := ⟨D.roundOf t, hm⟩
@@ -1141,7 +1137,6 @@ theorem recursiveForkEscapeSet_blind
     recursiveForkEscapeSet basis k A prefixes rounds final win decideWin D root t
         (Function.update O t v) =
       recursiveForkEscapeSet basis k A prefixes rounds final win decideWin D root t O := by
-  classical
   rw [recursiveForkEscapeSet, recursiveForkEscapeSet]
   by_cases hm : D.roundOf t < k
   · simp only [dif_pos hm]
@@ -1185,7 +1180,6 @@ theorem recursiveForkEscapeSet_measure_le [Fintype F]
     (PMF.uniformOfFintype F).toOuterMeasure
         (recursiveForkEscapeSet basis k A prefixes rounds final win decideWin D root t O)
       ≤ 3 / Fintype.card F := by
-  classical
   rw [recursiveForkEscapeSet]
   by_cases hm : D.roundOf t < k
   · simp only [dif_pos hm]
@@ -1229,7 +1223,6 @@ theorem recursiveForkEscapeSet_prefix
         prefixes p' ⟨m, by omega⟩ = t ∧
           (recursiveAlgebraicForkFrom basis k A prefixes rounds final win decideWin
             (m + 1) (by omega) O' p' (child u)).output.isSome := by
-  classical
   rw [recursiveForkEscapeSet]
   have hm : D.roundOf (prefixes p ⟨m, by omega⟩) < k := by
     rw [D.roundOf_prefixes]
@@ -1404,7 +1397,6 @@ theorem recursiveForkFailure_measure_le [Fintype T] [Fintype F] [Nonempty F]
     (PMF.uniformOfFintype (T → F)).toOuterMeasure
         (recursiveForkFailureSet basis k A prefixes rounds final win decideWin coins)
       ≤ (Q + k) * (3 / Fintype.card F) := by
-  classical
   let esc := recursiveForkEscapeSet basis k A prefixes rounds final win decideWin D coins
   have hsub : recursiveForkFailureSet basis k A prefixes rounds final win decideWin coins ⊆
       {O : T → F | (A.completing prefixes).escapesDuringC esc O} := by
